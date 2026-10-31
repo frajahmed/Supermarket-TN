@@ -3,6 +3,11 @@
 Supermarkt- und Großhandelssoftware, erster Markt Tunesien (Arabisch, Französisch, Englisch, TND).
 Betrieb: ein lokaler Server pro Kunde, Zugriff im Laden über WLAN/LAN, von unterwegs über Tunnel.
 
+## Zusammenarbeit
+
+- **Codex** entwickelt nach [`AGENTS.md`](AGENTS.md) und nimmt Aufgaben aus [`docs/TASKS.md`](docs/TASKS.md).
+- **Claude** pflegt die Aufgaben, prüft jede Lieferung mit `bash scripts/test-all.sh` und gibt frei.
+
 ## Inhalt
 
 | Pfad | Inhalt | Status |
