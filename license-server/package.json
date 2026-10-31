@@ -1,0 +1,18 @@
+{
+  "name": "@supermarket-tn/license-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zentraler Lizenzserver: Mietverträge und Geräte-Freischaltung. Keine Geschäftsdaten der Kunden. Keine externen Pakete.",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node src/main.ts",
+    "create-admin": "node src/main.ts create-admin",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.8.0"
+  }
+}

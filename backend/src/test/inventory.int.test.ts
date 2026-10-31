@@ -1,23 +1,34 @@
 /**
- * Integrationstest: echte NestJS-App + echte PostgreSQL-DB (Schema 001 + 002).
+ * Integrationstest: echte NestJS-App + echte PostgreSQL-DB (Migrationen 001–004)
+ * + echter Lizenzserver im selben Prozess.
  *
  * Voraussetzungen (Umgebungsvariablen):
- *   ADMIN_DATABASE_URL  Superuser/Owner-Verbindung zum Anlegen der Testdaten
+ *   ADMIN_DATABASE_URL  Owner-/Superuser-Verbindung zum Anlegen der Testdaten (Wegwerf-DB!)
  *   DATABASE_URL        Verbindung als app_user (RLS aktiv)
  *
- * Ablauf: Schlüsselpaar erzeugen -> Testmandanten anlegen -> App starten ->
- * Offline-Stapel pushen -> Idempotenz, Rechte, Live-Event und Mandantentrennung prüfen.
+ * Ablauf: Lizenzserver starten -> Kunde + Gerät freischalten -> Installation einrichten ->
+ * App starten -> echte Anmeldung mit Gerätezertifikat -> Offline-Push, Rechte, Live-Event, Isolation.
  */
 import 'reflect-metadata';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createPrivateKey, generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { AddressInfo } from 'node:net';
+import type { Server } from 'node:http';
 import { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { exportSPKI, generateKeyPair, SignJWT, KeyLike } from 'jose';
 import { Client } from 'pg';
 import { io, Socket } from 'socket.io-client';
+import {
+  generateSigningKeys, hashSecret, loadPrivateKey, publicKeyToB64, signChallenge,
+} from '../../../shared/license-core.ts';
+import { openDatabase } from '../../../license-server/src/db.ts';
+import { createLicenseServer } from '../../../license-server/src/http.ts';
+import { LicenseService } from '../../../license-server/src/service.ts';
+import { signJwt } from '../core/jwt.ts';
 import { AppModule } from '../app.module';
 import { formatAmount, parseAmount, taxFromGross } from '../common/money';
 
@@ -28,14 +39,19 @@ const MILK = randomUUID(), FLOUR_B = randomUUID();
 
 let app: INestApplication;
 let base = '';
-let privateKey: KeyLike;
 let admin: Client;
+let licenseServer: Server;
+let storeJwtKey: KeyObject;
+let deviceId = '';
+let deviceCert = '';
+let deviceKey: KeyObject;
 
-async function token(sub: string, tid: string, role: string) {
-  return new SignJWT({ tid, role })
-    .setProtectedHeader({ alg: 'EdDSA' })
-    .setSubject(sub).setIssuer('warenwirtschaft').setIssuedAt().setExpirationTime('15m')
-    .sign(privateKey);
+/**
+ * Access-Token direkt mit dem Schlüssel des Kundenservers ausstellen – nur für Rechte-/Isolationstests.
+ * Der echte Anmeldeweg wird im Test „Anmeldung mit freigeschaltetem Gerät" geprüft.
+ */
+async function token(sub: string, tid: string, role: 'owner' | 'manager' | 'stock_clerk' | 'cashier') {
+  return signJwt({ sub, tid, role, did: deviceId }, storeJwtKey, 900);
 }
 
 async function api(path: string, tok: string, init: RequestInit = {}) {
@@ -43,7 +59,14 @@ async function api(path: string, tok: string, init: RequestInit = {}) {
     ...init,
     headers: { authorization: `Bearer ${tok}`, 'content-type': 'application/json', ...(init.headers ?? {}) },
   });
-  return { status: res.status, body: await res.json() as any };
+  return { status: res.status, body: await res.json().catch(() => ({})) as any };
+}
+
+async function post(path: string, body: unknown) {
+  const res = await fetch(`${base}/api/v1${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+  });
+  return { status: res.status, body: await res.json().catch(() => ({})) as any };
 }
 
 const mv = (over: Record<string, unknown>) => ({
@@ -52,11 +75,29 @@ const mv = (over: Record<string, unknown>) => ({
 });
 
 before(async () => {
-  const kp = await generateKeyPair('EdDSA', { crv: 'Ed25519' });
-  privateKey = kp.privateKey;
-  process.env.JWT_PUBLIC_KEY = await exportSPKI(kp.publicKey);
+  const dir = mkdtempSync(join(tmpdir(), 'stn-int-'));
+
+  // --- Lizenzserver mit Kunde A und einem freigeschalteten Gerät ---
+  const licKeys = generateSigningKeys();
+  const licSvc = new LicenseService(openDatabase(':memory:'), loadPrivateKey(licKeys.privatePem));
+  const adminId = await licSvc.createAdmin('ahmed@example.tn', 'sehr-geheimes-passwort');
+  const inst = licSvc.createLicensee(adminId, { name: 'Kunde A', maxDevices: 5, paidUntil: '2099-12-31' });
+  const kp = generateKeyPairSync('ed25519');
+  deviceKey = kp.privateKey;
+  const req = licSvc.requestActivation({ installationId: inst.installationId, name: 'Kasse 1', kind: 'pos', publicKey: publicKeyToB64(kp.publicKey) });
+  deviceId = req.requestId;
+  deviceCert = licSvc.approveDevice(adminId, req.requestId);
+  licenseServer = createLicenseServer(licSvc, licKeys.publicPem).listen(0, '127.0.0.1');
+  await new Promise((r) => licenseServer.once('listening', r));
+
+  writeFileSync(join(dir, 'license.pub'), licKeys.publicPem);
+  process.env.LICENSE_PUBLIC_KEY_FILE = join(dir, 'license.pub');
+  process.env.LICENSE_SERVER_URL = `http://127.0.0.1:${(licenseServer.address() as AddressInfo).port}`;
+  process.env.INSTALLATION_SECRET = inst.installationSecret;
+  process.env.STORE_JWT_KEY_FILE = join(dir, 'store-jwt.key');
   process.env.OUTBOX_POLL_MS = '50';
 
+  // --- Datenbank: Mandanten, Benutzer, Installation ---
   admin = new Client({ connectionString: process.env.ADMIN_DATABASE_URL });
   await admin.connect();
   await admin.query(
@@ -66,10 +107,10 @@ before(async () => {
     `INSERT INTO app.stores (id, tenant_id, code, name) VALUES ($1,$4,'S1','A1'), ($2,$4,'S2','A2'), ($3,$5,'B1','B1')`,
     [STORE_A1, STORE_A2, STORE_B, T_A, T_B]);
   await admin.query(
-    `INSERT INTO app.users (id, tenant_id, email, display_name, role) VALUES
-       ($1,$5,'owner@a.tn','O','owner'), ($2,$5,'clerk@a.tn','C','stock_clerk'),
-       ($3,$5,'cash@a.tn','K','cashier'), ($4,$6,'owner@b.tn','OB','owner')`,
-    [OWNER_A, CLERK_A, CASHIER_A, OWNER_B, T_A, T_B]);
+    `INSERT INTO app.users (id, tenant_id, email, display_name, role, password_hash, pin_hash) VALUES
+       ($1,$5,'owner@a.tn','O','owner',$7,NULL), ($2,$5,'clerk@a.tn','C','stock_clerk',NULL,NULL),
+       ($3,$5,'cash@a.tn','K','cashier',NULL,$8), ($4,$6,'owner@b.tn','OB','owner',NULL,NULL)`,
+    [OWNER_A, CLERK_A, CASHIER_A, OWNER_B, T_A, T_B, await hashSecret('Chef-Passwort-2026'), await hashSecret('4711')]);
   await admin.query(
     `INSERT INTO app.user_store_access (tenant_id, user_id, store_id) VALUES ($1,$2,$4), ($1,$3,$4)`,
     [T_A, CLERK_A, CASHIER_A, STORE_A1]);
@@ -77,17 +118,47 @@ before(async () => {
     `INSERT INTO app.products (id, tenant_id, sku, name, sale_price, min_stock) VALUES
        ($1,$3,'LAIT','{"fr":"Lait 1 L","ar":"حليب 1 لتر"}',1350,10), ($2,$4,'FARINE','{"fr":"Farine"}',900,5)`,
     [MILK, FLOUR_B, T_A, T_B]);
+  await admin.query('SELECT auth.setup_installation($1, $2)', [inst.installationId, T_A]);
 
   app = await NestFactory.create(AppModule, { logger: ['error'] });
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
   await app.listen(0, '127.0.0.1');
   base = `http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`;
+  storeJwtKey = createPrivateKey(readFileSync(process.env.STORE_JWT_KEY_FILE, 'utf8'));
 });
 
 after(async () => {
   await app?.close();
+  licenseServer?.close();
   // Testdaten bleiben im Journal (append-only) – Test läuft gegen eine Wegwerf-DB.
   await admin?.end();
+});
+
+test('Anmeldung mit freigeschaltetem Gerät: Passwort, PIN, Refresh', async () => {
+  const proof = async () => {
+    const { body } = await post('/auth/challenge', {});
+    return { certificate: deviceCert, challenge: body.challenge, signature: signChallenge(body.challenge, deviceKey) };
+  };
+  const owner = await post('/auth/login', { email: 'owner@a.tn', password: 'Chef-Passwort-2026', device: await proof() });
+  assert.equal(owner.status, 200);
+  assert.equal(owner.body.user.role, 'owner');
+  assert.equal(owner.body.license.mode, 'active');
+
+  const wrong = await post('/auth/login', { email: 'owner@a.tn', password: 'falsch', device: await proof() });
+  assert.equal(wrong.status, 401);
+
+  const cashier = await post('/auth/login', { email: 'cash@a.tn', pin: '4711', device: await proof() });
+  assert.equal(cashier.status, 200);
+  const alerts = await api(`/stores/${STORE_A1}/stock-alerts`, cashier.body.accessToken);
+  assert.equal(alerts.status, 403, 'Kassierer ohne Recht report.stock');
+
+  const refreshed = await post('/auth/refresh', { refreshToken: owner.body.refreshToken });
+  assert.equal(refreshed.status, 200);
+  const reuse = await post('/auth/refresh', { refreshToken: owner.body.refreshToken });
+  assert.equal(reuse.status, 401, 'wiederverwendetes Refresh-Token');
+
+  const lic = await api('/license/status', refreshed.body.accessToken);
+  assert.equal(lic.body.mode, 'active');
 });
 
 test('Geldbeträge: TND mit 3 Nachkommastellen', () => {
@@ -169,10 +240,9 @@ test('Mandant B sieht nichts von Mandant A', async () => {
   assert.equal(push.body.results[0].status, 'rejected');
 });
 
-test('Gefälschter Mandant im Token wird durch Signaturprüfung abgewiesen', async () => {
-  const other = await generateKeyPair('EdDSA', { crv: 'Ed25519' });
-  const forged = await new SignJWT({ tid: T_A, role: 'owner' }).setProtectedHeader({ alg: 'EdDSA' })
-    .setSubject(OWNER_B).setIssuer('warenwirtschaft').setExpirationTime('5m').sign(other.privateKey);
+test('Token mit fremdem Schlüssel wird abgewiesen', async () => {
+  const foreign = generateKeyPairSync('ed25519').privateKey;
+  const forged = signJwt({ sub: OWNER_B, tid: T_A, role: 'owner', did: deviceId }, foreign, 300);
   const res = await api(`/sync/pull?storeId=${STORE_A1}`, forged);
   assert.equal(res.status, 401);
 });

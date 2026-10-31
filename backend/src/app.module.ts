@@ -1,9 +1,13 @@
 import { Controller, Get, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { AuthController } from './auth/auth.controller';
 import { AuthGuard, Public } from './auth/auth.guard';
+import { AuthFlowProvider } from './auth/auth.module-providers';
+import { PgAuthRepo } from './auth/pg-auth.repo';
 import { DbService } from './db/db.service';
 import { InventoryController } from './inventory/inventory.controller';
 import { InventoryService } from './inventory/inventory.service';
+import { LicensingService } from './licensing/licensing.service';
 import { OutboxWorker } from './realtime/outbox.worker';
 import { StockGateway } from './realtime/stock.gateway';
 
@@ -16,9 +20,12 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, InventoryController],
+  controllers: [HealthController, AuthController, InventoryController],
   providers: [
     DbService,
+    LicensingService,
+    PgAuthRepo,
+    AuthFlowProvider,
     AuthGuard,
     { provide: APP_GUARD, useExisting: AuthGuard },   // jeder Endpoint ist standardmäßig geschützt
     InventoryService,

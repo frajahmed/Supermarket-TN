@@ -10,10 +10,10 @@ export interface RequestContext {
   deviceId?: string;
 }
 
-/** Inhalt des Access-Tokens (JWT, 15 Minuten gültig). */
+/** Inhalt des Access-Tokens (JWT, 15 Minuten gültig, signiert vom Kundenserver). */
 export interface AccessTokenClaims {
-  sub: string;     // user id
-  tid: string;     // tenant id
+  sub: string;     // Benutzer-ID
+  tid: string;     // Mandant
   role: UserRole;
-  did?: string;    // device id (gekoppeltes Gerät)
+  did: string;     // freigeschaltetes Gerät (Pflicht)
 }

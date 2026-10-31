@@ -1,0 +1,16 @@
+{
+  "//": "Typprüfung des framework-freien Kerns (src/core) und seiner Tests – läuft ohne npm install der NestJS-Pakete.",
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/core/**/*.ts", "test-core/**/*.ts", "../shared/**/*.ts", "../license-server/src/**/*.ts"]
+}

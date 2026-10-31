@@ -3,17 +3,19 @@ import {
   SetMetadata, UnauthorizedException, createParamDecorator,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { importSPKI, jwtVerify, KeyLike } from 'jose';
+import { verifyJwt, JwtError } from '../core/jwt.ts';
 import { DbService } from '../db/db.service';
+import { LicensingService } from '../licensing/licensing.service';
+import { AuthFlowProvider } from './auth.module-providers';
 import { hasPermission, Permission } from './permissions';
-import { AccessTokenClaims, RequestContext, UserRole } from './request-context';
+import { AccessTokenClaims, RequestContext } from './request-context';
 
 const PERMISSION_KEY = 'required_permission';
 const PUBLIC_KEY = 'is_public';
 
 /** Markiert einen Endpoint mit dem nötigen Recht: @RequirePermission('stock.receive') */
 export const RequirePermission = (p: Permission) => SetMetadata(PERMISSION_KEY, p);
-/** Endpoint ohne Login (nur Login/Health). */
+/** Endpoint ohne Login (Login selbst, Health). */
 export const Public = () => SetMetadata(PUBLIC_KEY, true);
 
 /** Liefert den geprüften Kontext im Controller: handler(@Ctx() ctx: RequestContext) */
@@ -21,27 +23,24 @@ export const Ctx = createParamDecorator(
   (_: unknown, ec: ExecutionContext): RequestContext => ec.switchToHttp().getRequest().ctx,
 );
 
-const ROLES: readonly UserRole[] = ['owner', 'manager', 'stock_clerk', 'cashier'];
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
  * Globaler Guard, Reihenfolge:
- * 1. Bearer-Token prüfen (EdDSA-Signatur, Ablauf, Aussteller).
- * 2. Filialzuordnung frisch aus der DB laden – entzogene Rechte wirken sofort,
- *    nicht erst nach Ablauf des Tokens.
- * 3. Recht des Endpoints gegen die Rolle prüfen.
- * Der Kontext wird an request.ctx gehängt und vom DbService als RLS-Kontext gesetzt.
+ * 1. Access-Token prüfen (Ed25519-Signatur dieses Kundenservers, Ablauf).
+ * 2. Gerät gesperrt? (Lizenzserver-Sperrliste) -> sofort 401, nicht erst nach Token-Ablauf.
+ * 3. Lizenz im Nur-Lesen-Modus? -> schreibende Anfragen 403.
+ * 4. Filialzuordnung frisch aus der DB laden (entzogene Rechte wirken sofort).
+ * 5. Recht des Endpoints gegen die Rolle prüfen.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
-  private keyPromise?: Promise<KeyLike>;
-
-  constructor(private readonly reflector: Reflector, private readonly db: DbService) {}
-
-  private key(): Promise<KeyLike> {
-    const pem = process.env.JWT_PUBLIC_KEY;
-    if (!pem) throw new Error('JWT_PUBLIC_KEY fehlt');
-    return (this.keyPromise ??= importSPKI(pem, 'EdDSA'));
-  }
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly db: DbService,
+    private readonly licensing: LicensingService,
+    private readonly auth: AuthFlowProvider,
+  ) {}
 
   async canActivate(ec: ExecutionContext): Promise<boolean> {
     const targets = [ec.getHandler(), ec.getClass()];
@@ -51,7 +50,10 @@ export class AuthGuard implements CanActivate {
     const header: string | undefined = req.headers?.authorization;
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException();
 
-    const claims = await this.verify(header.slice(7));
+    const claims = this.verify(header.slice(7));
+    if (!READ_METHODS.has(req.method) && !this.licensing.gate.allowsWrite()) {
+      throw new ForbiddenException({ message: this.licensing.gate.status().reason, licenseMode: 'read_only' });
+    }
     req.ctx = await this.buildContext(claims);
 
     const required = this.reflector.getAllAndOverride<Permission | undefined>(PERMISSION_KEY, targets);
@@ -61,36 +63,23 @@ export class AuthGuard implements CanActivate {
     return true;
   }
 
-  async verify(token: string): Promise<AccessTokenClaims> {
+  /** Auch vom WebSocket-Gateway genutzt. */
+  verify(token: string): AccessTokenClaims {
+    let c;
     try {
-      const { payload } = await jwtVerify(token, await this.key(), {
-        algorithms: ['EdDSA'],
-        issuer: process.env.JWT_ISSUER ?? 'warenwirtschaft',
-      });
-      const role = payload.role as UserRole;
-      if (typeof payload.sub !== 'string' || typeof payload.tid !== 'string' || !ROLES.includes(role)) {
-        throw new Error('Ungültige Claims');
-      }
-      return { sub: payload.sub, tid: payload.tid, role, did: payload.did as string | undefined };
-    } catch {
-      throw new UnauthorizedException('Token ungültig oder abgelaufen');
+      c = verifyJwt(token, this.auth.jwt.publicKey);
+    } catch (e) {
+      throw new UnauthorizedException(e instanceof JwtError ? 'Token ungültig oder abgelaufen' : 'Token ungültig');
     }
+    if (this.licensing.gate.isDeviceRevoked(c.did)) throw new UnauthorizedException('Gerät wurde gesperrt');
+    return { sub: c.sub, tid: c.tid, role: c.role, did: c.did };
   }
 
   async buildContext(claims: AccessTokenClaims): Promise<RequestContext> {
     const storeIds = await this.db.system(async (c) => {
-      const res = await c.query<{ ids: string[] }>(
-        'SELECT auth.user_store_ids($1, $2) AS ids',
-        [claims.tid, claims.sub],
-      );
+      const res = await c.query<{ ids: string[] }>('SELECT auth.user_store_ids($1, $2) AS ids', [claims.tid, claims.sub]);
       return res.rows[0]?.ids ?? [];
     });
-    return {
-      tenantId: claims.tid,
-      userId: claims.sub,
-      role: claims.role,
-      storeIds,
-      deviceId: claims.did,
-    };
+    return { tenantId: claims.tid, userId: claims.sub, role: claims.role, storeIds, deviceId: claims.did };
   }
 }

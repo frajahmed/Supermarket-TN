@@ -24,7 +24,7 @@ export class StockGateway implements OnGatewayConnection {
   async handleConnection(socket: Socket) {
     try {
       const token = String(socket.handshake.auth?.token ?? '');
-      const ctx = await this.auth.buildContext(await this.auth.verify(token));
+      const ctx = await this.auth.buildContext(this.auth.verify(token));
       socket.data.ctx = ctx;
       if (ctx.role === 'owner') {
         await socket.join(tenantRoom(ctx.tenantId));            // Inhaber: alle Filialen
