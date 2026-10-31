@@ -80,15 +80,15 @@ TSC=""
 for c in "$ROOT/backend/node_modules/.bin/tsc" "$ROOT/license-server/node_modules/.bin/tsc" "$(command -v tsc 2>/dev/null)"; do
   [ -n "$c" ] && [ -x "$c" ] && { TSC="$c"; break; }
 done
-TYPEROOTS=""
+TYPEROOT_ARGS=()
 # @types/node: Projekt, global oder neben dem gefundenen tsc (z. B. .../node_modules/.bin/tsc -> .../node_modules/@types)
 TSC_TYPES="$( [ -n "$TSC" ] && cd "$(dirname "$(readlink -f "$TSC")")/../.." 2>/dev/null && pwd)/@types"
 for d in "$ROOT/backend/node_modules/@types" "$ROOT/license-server/node_modules/@types" "$(npm root -g 2>/dev/null)/@types" "$TSC_TYPES" "$(dirname "$(dirname "$TSC")")/@types"; do
-  [ -d "$d/node" ] && { TYPEROOTS="--typeRoots $d"; break; }
+  [ -d "$d/node" ] && { TYPEROOT_ARGS=(--typeRoots "$d"); break; }
 done
 if [ -n "$TSC" ]; then
-  run_step "Typprüfung Lizenzserver" "$TSC" -p license-server/tsconfig.json $TYPEROOTS
-  run_step "Typprüfung Backend-Kern" "$TSC" -p backend/tsconfig.core.json $TYPEROOTS
+  run_step "Typprüfung Lizenzserver" "$TSC" -p license-server/tsconfig.json "${TYPEROOT_ARGS[@]}"
+  run_step "Typprüfung Backend-Kern" "$TSC" -p backend/tsconfig.core.json "${TYPEROOT_ARGS[@]}"
   if [ -d backend/node_modules/@nestjs ]; then
     run_step "Typprüfung Backend (NestJS)" "$TSC" -p backend/tsconfig.json --noEmit
   else
@@ -105,8 +105,8 @@ node_tests() {  # node_tests <name> <dir> <glob>
   local out
   out="$(cd "$ROOT/$2" && node --test "$3" 2>&1)"
   local pass fail
-  pass=$(echo "$out" | sed -n 's/^# pass \([0-9]*\)/\1/p' | tail -1)
-  fail=$(echo "$out" | sed -n 's/^# fail \([0-9]*\)/\1/p' | tail -1)
+  pass=$(echo "$out" | sed -n 's/^[#ℹ] pass \([0-9]*\)/\1/p' | tail -1)
+  fail=$(echo "$out" | sed -n 's/^[#ℹ] fail \([0-9]*\)/\1/p' | tail -1)
   if [ "${fail:-1}" = "0" ] && [ "${pass:-0}" -gt 0 ]; then record ok "$1 ($pass Tests)"
   else record fail "$1" "(bestanden ${pass:-0}, fehlgeschlagen ${fail:-?})"; echo "$out" | grep -E '^not ok|AssertionError|Error' | head -20; fi
 }

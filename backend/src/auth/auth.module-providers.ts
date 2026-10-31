@@ -29,7 +29,8 @@ export class AuthFlowProvider implements OnModuleInit {
 
   constructor(private readonly repo: PgAuthRepo, private readonly licensing: LicensingService) {}
 
-  onModuleInit() {
+  async onModuleInit() {
+    await this.licensing.ready;
     this.flow = new AuthFlow({
       repo: this.repo,
       gate: this.licensing.gate,

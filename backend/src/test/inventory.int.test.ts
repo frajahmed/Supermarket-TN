@@ -259,3 +259,92 @@ test('Dashboard: Warnung, sobald Mindestbestand unterschritten wird', async () =
   assert.equal(afterLoss.body.lowStock.length, 1);                    // 6,5 < 10
   assert.equal(afterLoss.body.lowStock[0].name, 'Lait 1 L');
 });
+
+test('Produkt-API: Suche, Barcode/Gebinde, Preisrecht und Mandantentrennung', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const sku = `API-${randomUUID().slice(0, 8)}`;
+  const created = await api('/products', owner, {
+    method: 'POST',
+    body: JSON.stringify({
+      sku,
+      name: { fr: 'Carton de lait', ar: 'كرتونة حليب' },
+      purchasePrice: '900',
+      salePrice: '1350',
+    }),
+  });
+  assert.equal(created.status, 201);
+  const productId = created.body.id as string;
+
+  const barcode = 'API-UPC-001';
+  const addedBarcode = await api(`/products/${productId}/barcodes`, owner, {
+    method: 'POST', body: JSON.stringify({ code: barcode, packQty: '1.000' }),
+  });
+  assert.equal(addedBarcode.status, 201);
+
+  const gtin = 'API-GTIN-012';
+  const packaging = await api(`/products/${productId}/packagings`, owner, {
+    method: 'POST',
+    body: JSON.stringify({ code: 'carton', name: { fr: 'Carton de 12' }, factor: '12.000', gtin }),
+  });
+  assert.equal(packaging.status, 201);
+
+  const scan = await api(`/products/by-barcode/${gtin}`, owner);
+  assert.equal(scan.status, 200);
+  assert.equal(scan.body.product.id, productId);
+  assert.equal(scan.body.quantityPerScan, '12.000');
+  assert.equal(scan.body.packaging.factor, '12.000');
+
+  const duplicate = await api(`/products/${productId}/barcodes`, owner, {
+    method: 'POST', body: JSON.stringify({ code: gtin }),
+  });
+  assert.equal(duplicate.status, 409);
+  assert.match(String(duplicate.body.message), /Barcode/);
+
+  const updated = await api(`/products/${productId}`, owner, {
+    method: 'PATCH', body: JSON.stringify({ salePrice: '1450' }),
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.salePrice, '1450');
+  const audit = await admin.query<{ action: string; before: { salePrice: string }; after: { salePrice: string } }>(
+    `SELECT action, before, after FROM app.audit_log WHERE entity_id = $1 ORDER BY id DESC LIMIT 1`,
+    [productId],
+  );
+  assert.equal(audit.rows[0].action, 'price.update');
+  assert.equal(audit.rows[0].before.salePrice, '1350');
+  assert.equal(audit.rows[0].after.salePrice, '1450');
+
+  const clerk = await token(CLERK_A, T_A, 'stock_clerk');
+  const clerkPrice = await api(`/products/${productId}`, clerk, {
+    method: 'PATCH', body: JSON.stringify({ salePrice: '1500' }),
+  });
+  assert.equal(clerkPrice.status, 403);
+  const clerkCreatePrice = await api('/products', clerk, {
+    method: 'POST',
+    body: JSON.stringify({ sku: 'CLERK-PRICE-001', name: { fr: 'Preis nicht erlaubt' }, salePrice: '1500' }),
+  });
+  assert.equal(clerkCreatePrice.status, 403);
+
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+  const search = await api(`/products?q=${encodeURIComponent('Carton')}`, cashier);
+  assert.equal(search.status, 200);
+  assert.ok(search.body.items.some((item: { id: string }) => item.id === productId));
+  const cashierCreate = await api('/products', cashier, {
+    method: 'POST', body: JSON.stringify({ sku: 'CASHIER-001', name: { fr: 'Nicht erlaubt' } }),
+  });
+  assert.equal(cashierCreate.status, 403);
+
+  const ownerB = await token(OWNER_B, T_B, 'owner');
+  const foreignScan = await api(`/products/by-barcode/${gtin}`, ownerB);
+  assert.equal(foreignScan.status, 404);
+
+  const removed = await api(`/products/${productId}/barcodes/${barcode}`, owner, { method: 'DELETE' });
+  assert.equal(removed.status, 200);
+});
+
+test('Produktnamen brauchen mindestens eine unterstützte Sprache', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const invalid = await api('/products', owner, {
+    method: 'POST', body: JSON.stringify({ sku: 'INVALID-NAME', name: {} }),
+  });
+  assert.equal(invalid.status, 400);
+});
