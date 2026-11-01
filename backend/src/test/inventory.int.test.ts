@@ -34,7 +34,7 @@ import { formatAmount, parseAmount, taxFromGross } from '../common/money';
 
 const T_A = randomUUID(), T_B = randomUUID();
 const STORE_A1 = randomUUID(), STORE_A2 = randomUUID(), STORE_B = randomUUID();
-const OWNER_A = randomUUID(), CLERK_A = randomUUID(), CASHIER_A = randomUUID(), OWNER_B = randomUUID();
+const OWNER_A = randomUUID(), MANAGER_A = randomUUID(), CLERK_A = randomUUID(), CASHIER_A = randomUUID(), OWNER_B = randomUUID();
 const MILK = randomUUID(), FLOUR_B = randomUUID();
 
 let app: INestApplication;
@@ -108,12 +108,15 @@ before(async () => {
     [STORE_A1, STORE_A2, STORE_B, T_A, T_B]);
   await admin.query(
     `INSERT INTO app.users (id, tenant_id, email, display_name, role, password_hash, pin_hash) VALUES
-       ($1,$5,'owner@a.tn','O','owner',$7,NULL), ($2,$5,'clerk@a.tn','C','stock_clerk',NULL,NULL),
-       ($3,$5,'cash@a.tn','K','cashier',NULL,$8), ($4,$6,'owner@b.tn','OB','owner',NULL,NULL)`,
-    [OWNER_A, CLERK_A, CASHIER_A, OWNER_B, T_A, T_B, await hashSecret('Chef-Passwort-2026'), await hashSecret('4711')]);
+       ($1,$6,'owner@a.tn','O','owner',$8,NULL), ($2,$6,'clerk@a.tn','C','stock_clerk',NULL,NULL),
+       ($3,$6,'cash@a.tn','K','cashier',NULL,$9), ($4,$6,'manager@a.tn','M','manager',NULL,NULL),
+       ($5,$7,'owner@b.tn','OB','owner',NULL,NULL)`,
+    [OWNER_A, CLERK_A, CASHIER_A, MANAGER_A, OWNER_B, T_A, T_B,
+     await hashSecret('Chef-Passwort-2026'), await hashSecret('4711')]);
   await admin.query(
-    `INSERT INTO app.user_store_access (tenant_id, user_id, store_id) VALUES ($1,$2,$4), ($1,$3,$4)`,
-    [T_A, CLERK_A, CASHIER_A, STORE_A1]);
+    `INSERT INTO app.user_store_access (tenant_id, user_id, store_id) VALUES
+       ($1,$2,$5), ($1,$3,$5), ($1,$4,$5)`,
+    [T_A, CLERK_A, CASHIER_A, MANAGER_A, STORE_A1]);
   await admin.query(
     `INSERT INTO app.products (id, tenant_id, sku, name, sale_price, min_stock) VALUES
        ($1,$3,'LAIT','{"fr":"Lait 1 L","ar":"حليب 1 لتر"}',1350,10), ($2,$4,'FARINE','{"fr":"Farine"}',900,5)`,
@@ -347,4 +350,90 @@ test('Produktnamen brauchen mindestens eine unterstützte Sprache', async () => 
     method: 'POST', body: JSON.stringify({ sku: 'INVALID-NAME', name: {} }),
   });
   assert.equal(invalid.status, 400);
+});
+
+test('T-107: Einkaufspreise, Literalsuche, Gebinde-Konflikt und Erstellungs-Audit', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const suffix = randomUUID().slice(0, 8);
+  const roleProduct = await api('/products', owner, {
+    method: 'POST',
+    body: JSON.stringify({
+      sku: `ROLE-${suffix}`,
+      name: { fr: '50% Rabatt', en: '50% discount' },
+      purchasePrice: '500',
+      salePrice: '900',
+    }),
+  });
+  assert.equal(roleProduct.status, 201);
+  assert.equal(roleProduct.body.purchasePrice, '500');
+  const roleProductId = roleProduct.body.id as string;
+
+  const createAudit = await admin.query<{ before: unknown; after: { salePrice: string } }>(
+    `SELECT before, after FROM app.audit_log
+      WHERE entity_id = $1 AND action = 'price.update' ORDER BY id DESC LIMIT 1`,
+    [roleProductId],
+  );
+  assert.equal(createAudit.rows[0].before, null);
+  assert.equal(createAudit.rows[0].after.salePrice, '900');
+
+  const otherProduct = await api('/products', owner, {
+    method: 'POST',
+    body: JSON.stringify({ sku: `OTHER-${suffix}`, name: { fr: '50X Rabatt' } }),
+  });
+  assert.equal(otherProduct.status, 201);
+
+  const roleBarcode = `ROLE-BARCODE-${suffix}`;
+  const addedBarcode = await api(`/products/${roleProductId}/barcodes`, owner, {
+    method: 'POST', body: JSON.stringify({ code: roleBarcode }),
+  });
+  assert.equal(addedBarcode.status, 201);
+
+  const firstPackaging = await api(`/products/${roleProductId}/packagings`, owner, {
+    method: 'POST',
+    body: JSON.stringify({
+      code: 'karton', name: { fr: 'Carton' }, factor: '6.000', gtin: `GTIN-${suffix}`,
+    }),
+  });
+  assert.equal(firstPackaging.status, 201);
+  const duplicatePackaging = await api(`/products/${roleProductId}/packagings`, owner, {
+    method: 'POST',
+    body: JSON.stringify({
+      code: 'karton', name: { fr: 'Carton erneut' }, factor: '12.000', gtin: `GTIN-OTHER-${suffix}`,
+    }),
+  });
+  assert.equal(duplicatePackaging.status, 409);
+  assert.match(String(duplicatePackaging.body.message), /^Gebinde-Code/);
+
+  const ownerList = await api(`/products?q=${encodeURIComponent('50%')}`, owner);
+  assert.equal(ownerList.status, 200);
+  assert.deepEqual(ownerList.body.items.map((item: { id: string }) => item.id), [roleProductId]);
+  assert.equal(Object.hasOwn(ownerList.body.items[0], 'purchasePrice'), true);
+
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const managerList = await api(`/products?q=${encodeURIComponent(`ROLE-${suffix}`)}`, manager);
+  assert.equal(managerList.status, 200);
+  assert.equal(Object.hasOwn(managerList.body.items[0], 'purchasePrice'), true);
+
+  const clerk = await token(CLERK_A, T_A, 'stock_clerk');
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+  for (const [label, tok] of [['Lagerist', clerk], ['Kassierer', cashier]] as const) {
+    const list = await api(`/products?q=${encodeURIComponent(`ROLE-${suffix}`)}`, tok);
+    assert.equal(list.status, 200, `${label} darf Produkte suchen`);
+    assert.equal(Object.hasOwn(list.body.items[0], 'purchasePrice'), false, `${label} sieht keinen Einkaufspreis`);
+  }
+
+  for (const [label, tok, visible] of [
+    ['Inhaber', owner, true], ['Filialleiter', manager, true],
+    ['Lagerist', clerk, false], ['Kassierer', cashier, false],
+  ] as const) {
+    const scan = await api(`/products/by-barcode/${roleBarcode}`, tok);
+    assert.equal(scan.status, 200, `${label} darf Barcode scannen`);
+    assert.equal(Object.hasOwn(scan.body.product, 'purchasePrice'), visible, `${label} Einkaufspreis-Sichtbarkeit`);
+  }
+
+  const clerkUpdate = await api(`/products/${roleProductId}`, clerk, {
+    method: 'PATCH', body: JSON.stringify({ name: { fr: '50% Rabatt Lager' } }),
+  });
+  assert.equal(clerkUpdate.status, 200);
+  assert.equal(Object.hasOwn(clerkUpdate.body, 'purchasePrice'), false);
 });
