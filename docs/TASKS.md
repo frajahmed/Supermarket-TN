@@ -15,7 +15,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 ---
 
 ## T-101 · Produkt-API mit Barcode-Suche und Gebinden
-**Status:** offen · **Abhängig von:** –
+**Status:** zur Prüfung · **Abhängig von:** –
 
 Endpunkte im Backend (`backend/src/products/`):
 - `GET /api/v1/products?q=&categoryId=&cursor=`: Suche über `name->>'fr'`, `name->>'ar'`, `sku` (Trigram-Index vorhanden), seitenweise.
@@ -30,6 +30,10 @@ Abnahmekriterien:
 3. Namen sind mehrsprachig (`{ar, fr, en}`), mindestens eine Sprache ist Pflicht (Zod).
 4. Preisänderungen schreiben einen Eintrag in `app.audit_log` (vorher/nachher).
 5. Tests: Integrationstest mit Mandant A/B (B findet A's Barcode nicht), Lagerist-Preis-403, Kassierer kann suchen, aber nicht anlegen.
+
+Umsetzung: Produkt-Suche mit Cursor und Kategorie, Produktanlage/-änderung, Barcode- und Gebinde-Endpunkte sowie Barcode-Suche über Einzelbarcode und GTIN. Preisänderungen sind auf `price.update` begrenzt und werden mit vorher/nachher im Audit protokolliert. `db/005_product_barcode_uniqueness.sql` sichert die mandantenweite Eindeutigkeit über beide Barcode-Tabellen.
+Neue Tests: `db/tests/005_product_barcode_test.sql` und erweiterte NestJS-Integrationstests für GTIN-Faktor, 409, Audit, RLS-Mandantentrennung, Lagerist-403, Kassierer-Lesen/Anlegen und Zod-Sprachpflicht.
+Offene Fragen: keine.
 
 ## T-102 · Benutzerverwaltung und 2FA
 **Status:** offen · **Abhängig von:** –

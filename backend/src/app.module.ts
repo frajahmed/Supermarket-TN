@@ -10,6 +10,8 @@ import { InventoryService } from './inventory/inventory.service';
 import { LicensingService } from './licensing/licensing.service';
 import { OutboxWorker } from './realtime/outbox.worker';
 import { StockGateway } from './realtime/stock.gateway';
+import { ProductsController } from './products/products.controller';
+import { ProductsService } from './products/products.service';
 
 @Controller('health')
 class HealthController {
@@ -20,7 +22,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, InventoryController],
+  controllers: [HealthController, AuthController, InventoryController, ProductsController],
   providers: [
     DbService,
     LicensingService,
@@ -31,6 +33,7 @@ class HealthController {
     InventoryService,
     StockGateway,
     OutboxWorker,
+    ProductsService,
   ],
 })
 export class AppModule {}
