@@ -1,5 +1,7 @@
 # Aufgaben (gepflegt von Claude, umgesetzt von Codex)
 
+CI auf GitHub (`.github/workflows/ci.yml`) führt bei jedem Push `scripts/test-all.sh` aus – ein Pull Request wird nur mit grünem Lauf gemergt.
+
 Status: `offen` → `in Arbeit (Codex)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Codex` (mit Befund).
 Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Definition of Done: siehe `AGENTS.md`.
 
@@ -11,29 +13,25 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-002 | Großhandel: Kunden, Preislisten, Rechnungen, Kreditlimit (`db/003`) | `db/tests/003_wholesale_test.sql` (W0–W7) |
 | T-003 | Lizenzserver + Verwaltungsportal | `license-server/test/` (10 Tests) |
 | T-004 | Login mit Gerätezertifikat, PIN, Refresh-Rotation (`db/004`, `backend/src/core`) | `backend/test-core/` (16), `db/tests/004_auth_test.sql` (A1–A6) |
+| T-101 | Produkt-API: Suche, Barcode/GTIN-Scan, Gebinde, Preisrecht, Audit (`db/005`) – PR #1 | `db/tests/005_product_barcode_test.sql` (P1–P4), NestJS-Integrationstests |
 
 ---
 
-## T-101 · Produkt-API mit Barcode-Suche und Gebinden
-**Status:** zur Prüfung · **Abhängig von:** –
+## T-107 · Einkaufspreise nach Rolle verbergen (aus Prüfung von T-101)
+**Status:** offen · **Priorität:** höchste – vor jedem Kundeneinsatz · **Abhängig von:** –
 
-Endpunkte im Backend (`backend/src/products/`):
-- `GET /api/v1/products?q=&categoryId=&cursor=`: Suche über `name->>'fr'`, `name->>'ar'`, `sku` (Trigram-Index vorhanden), seitenweise.
-- `GET /api/v1/products/by-barcode/:code`: findet über `app.product_barcodes` **und** `app.product_packagings.gtin`. Liefert Produkt + Gebinde + Menge je Scan (`pack_qty` bzw. `factor`).
-- `POST /api/v1/products`, `PATCH /api/v1/products/:id`: Recht `product.write`. **Preise** (`purchase_price`, `sale_price`) nur mit Recht `price.update`; ein Lagerist ohne dieses Recht bekommt 403, wenn das Feld im Body steht.
-- `POST /api/v1/products/:id/barcodes`, `DELETE …/barcodes/:code`
-- `POST /api/v1/products/:id/packagings`
+Befund: `GET /products` und `GET /products/by-barcode/:code` liefern `purchasePrice` an alle Rollen. Laut Berechtigungsmatrix dürfen nur Rollen mit Recht `report.finance` (Inhaber, Filialleiter) Einkaufspreise sehen.
+
+- Antworten der Produkt-Endpunkte: `purchasePrice` nur mit Recht `report.finance`, sonst Feld **weglassen** (nicht `null`). Gilt für Liste, Barcode-Scan, Anlegen/Ändern-Antwort und künftige Endpunkte – zentral in einer Funktion lösen, nicht pro Endpunkt.
+- `q` in der Suche: `%`, `_` und `\` escapen (`ILIKE … ESCAPE '\'`).
+- `createPackaging`: Konfliktmeldung anhand des verletzten Constraints wählen (Gebinde-Code vs. GTIN).
+- Anlegen mit Preis schreibt ebenfalls einen Audit-Eintrag (`price.update`, `before` = null).
 
 Abnahmekriterien:
-1. Ein Barcode ist je Mandant eindeutig. Ein Duplikat liefert 409 mit verständlicher Meldung.
-2. Scan eines Karton-GTIN (Faktor 12) liefert `quantityPerScan: "12.000"`.
-3. Namen sind mehrsprachig (`{ar, fr, en}`), mindestens eine Sprache ist Pflicht (Zod).
-4. Preisänderungen schreiben einen Eintrag in `app.audit_log` (vorher/nachher).
-5. Tests: Integrationstest mit Mandant A/B (B findet A's Barcode nicht), Lagerist-Preis-403, Kassierer kann suchen, aber nicht anlegen.
-
-Umsetzung: Produkt-Suche mit Cursor und Kategorie, Produktanlage/-änderung, Barcode- und Gebinde-Endpunkte sowie Barcode-Suche über Einzelbarcode und GTIN. Preisänderungen sind auf `price.update` begrenzt und werden mit vorher/nachher im Audit protokolliert. `db/005_product_barcode_uniqueness.sql` sichert die mandantenweite Eindeutigkeit über beide Barcode-Tabellen.
-Neue Tests: `db/tests/005_product_barcode_test.sql` und erweiterte NestJS-Integrationstests für GTIN-Faktor, 409, Audit, RLS-Mandantentrennung, Lagerist-403, Kassierer-Lesen/Anlegen und Zod-Sprachpflicht.
-Offene Fragen: keine.
+1. Test: Kassierer und Lagerist erhalten in Liste und Scan **kein** Feld `purchasePrice`; Inhaber und Filialleiter schon.
+2. Test: Suche nach `50%` findet nur Produkte mit „50%“ im Namen, nicht alle mit „50“.
+3. Test: Konflikt beim Gebinde-Code liefert 409 „Gebinde-Code …“, auch wenn eine GTIN mitgeschickt wird.
+4. Test: Anlegen mit `salePrice` erzeugt einen Audit-Eintrag.
 
 ## T-102 · Benutzerverwaltung und 2FA
 **Status:** offen · **Abhängig von:** –
@@ -101,3 +99,4 @@ Abnahmekriterien:
 | Datum | Aufgabe | Ergebnis | Befund |
 | --- | --- | --- | --- |
 | 2026-11-01 | T-001 … T-004 | erledigt | Ausgangsstand: 33 SQL-Prüfungen, 26 Node-Tests grün |
+| 2026-11-02 | T-101 (PR #1) | erledigt | CI 16/16 grün, 0 übersprungen (inkl. 11 NestJS-Integrationstests). Alle 5 Kriterien erfüllt. Befund Einkaufspreis-Sichtbarkeit → T-107. Positiv: Startreihenfolge-Fehler in Lizenz/Auth behoben. |
