@@ -35,15 +35,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
 
       - name: PostgreSQL-Client
         run: psql --version || (sudo apt-get update && sudo apt-get install -y postgresql-client)
 
       - name: Pakete Backend
         working-directory: backend
-        run: npm ci
+        run: if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
 
       - name: Gesamtprüfung
         run: bash scripts/test-all.sh
