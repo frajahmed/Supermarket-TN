@@ -14,28 +14,9 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-003 | Lizenzserver + Verwaltungsportal | `license-server/test/` (10 Tests) |
 | T-004 | Login mit Gerätezertifikat, PIN, Refresh-Rotation (`db/004`, `backend/src/core`) | `backend/test-core/` (16), `db/tests/004_auth_test.sql` (A1–A6) |
 | T-101 | Produkt-API: Suche, Barcode/GTIN-Scan, Gebinde, Preisrecht, Audit (`db/005`) – PR #1 | `db/tests/005_product_barcode_test.sql` (P1–P4), NestJS-Integrationstests |
+| T-107 | Einkaufspreise nur mit `report.finance`, Literalsuche, Konfliktmeldungen, Audit beim Anlegen – PR #2 | NestJS-Integrationstest „T-107“ |
 
 ---
-
-## T-107 · Einkaufspreise nach Rolle verbergen (aus Prüfung von T-101)
-**Status:** zur Prüfung · **Priorität:** höchste – vor jedem Kundeneinsatz · **Abhängig von:** –
-
-Befund: `GET /products` und `GET /products/by-barcode/:code` liefern `purchasePrice` an alle Rollen. Laut Berechtigungsmatrix dürfen nur Rollen mit Recht `report.finance` (Inhaber, Filialleiter) Einkaufspreise sehen.
-
-- Antworten der Produkt-Endpunkte: `purchasePrice` nur mit Recht `report.finance`, sonst Feld **weglassen** (nicht `null`). Gilt für Liste, Barcode-Scan, Anlegen/Ändern-Antwort und künftige Endpunkte – zentral in einer Funktion lösen, nicht pro Endpunkt.
-- `q` in der Suche: `%`, `_` und `\` escapen (`ILIKE … ESCAPE '\'`).
-- `createPackaging`: Konfliktmeldung anhand des verletzten Constraints wählen (Gebinde-Code vs. GTIN).
-- Anlegen mit Preis schreibt ebenfalls einen Audit-Eintrag (`price.update`, `before` = null).
-
-Abnahmekriterien:
-1. Test: Kassierer und Lagerist erhalten in Liste und Scan **kein** Feld `purchasePrice`; Inhaber und Filialleiter schon.
-2. Test: Suche nach `50%` findet nur Produkte mit „50%“ im Namen, nicht alle mit „50“.
-3. Test: Konflikt beim Gebinde-Code liefert 409 „Gebinde-Code …“, auch wenn eine GTIN mitgeschickt wird.
-4. Test: Anlegen mit `salePrice` erzeugt einen Audit-Eintrag.
-
-Umsetzung: Einkaufspreise werden zentral anhand von `report.finance` aus Produktantworten entfernt; Literalsuche escaped `%`, `_` und `\\`; Gebinde-Konflikte unterscheiden Constraint-basiert Gebinde-Code und GTIN; Produktanlage mit Preis schreibt `price.update` mit `before = null` in das Audit-Log.
-Neue Tests: erweiterte NestJS-Integrationstests für Rollen-Sichtbarkeit in Liste/Scan/Ändern, Literalsuche, Gebinde-Code-Konflikt und Erstellungs-Audit.
-Offene Fragen: keine.
 
 ## T-102 · Benutzerverwaltung und 2FA
 **Status:** offen · **Abhängig von:** –
@@ -104,3 +85,4 @@ Abnahmekriterien:
 | --- | --- | --- | --- |
 | 2026-11-01 | T-001 … T-004 | erledigt | Ausgangsstand: 33 SQL-Prüfungen, 26 Node-Tests grün |
 | 2026-11-02 | T-101 (PR #1) | erledigt | CI 16/16 grün, 0 übersprungen (inkl. 11 NestJS-Integrationstests). Alle 5 Kriterien erfüllt. Befund Einkaufspreis-Sichtbarkeit → T-107. Positiv: Startreihenfolge-Fehler in Lizenz/Auth behoben. |
+| 2026-11-02 | T-107 (PR #2) | erledigt | CI grün, alle 4 Kriterien erfüllt, Constraint-Name gegen DB verifiziert. Keine Befunde. |
