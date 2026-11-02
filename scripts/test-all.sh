@@ -112,6 +112,7 @@ node_tests() {  # node_tests <name> <dir> <glob>
 }
 node_tests "Lizenzserver-Tests" license-server "test/**/*.test.ts"
 node_tests "Lizenz- und Login-Tests (Kern)" backend "test-core/**/*.test.ts"
+node_tests "Expo-App-Tests" app "test/**/*.test.ts"
 
 # ---------------------------------------------------------------------------
 # 3. Datenbank: Migrationen auf frische DB + SQL-Tests

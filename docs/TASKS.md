@@ -40,7 +40,7 @@ Abnahmekriterien:
 5. Test: Filialleiter entfernt eigene Filiale bei gemischtem Lageristen → fremde Zuordnung bleibt; Deaktivieren → 403.
 
 ## T-103 · Expo-App: Freischaltung, Anmeldung, Sprachen
-**Status:** offen – kann starten · **Abhängig von:** T-102 (erledigt)
+**Status:** zur Prüfung · **Abhängig von:** T-102 (erledigt)
 
 Neuer Ordner `app/` (Expo, TypeScript, expo-router):
 - **Erststart:** Schlüsselpaar Ed25519 erzeugen, privater Schlüssel in `expo-secure-store` (Hardware-gestützt, wo verfügbar). Kundenserver-Adresse per QR-Code oder Eingabe; Installations-ID kommt vom Kundenserver (`GET /api/v1/setup/info`, neuer öffentlicher Endpunkt).
@@ -53,6 +53,12 @@ Abnahmekriterien:
 1. Unit-Tests für Signatur/Challenge mit denselben Testvektoren wie `shared/license-core.ts` (Kompatibilität App ↔ Server).
 2. Sprache wechseln ändert die Layoutrichtung ohne Datenverlust.
 3. Kein Geheimnis in AsyncStorage oder Logs (Code-Review durch Claude).
+
+Umsetzung: Expo-Router-App im Ordner `app/` mit SecureStore-Geräteidentität,
+Ed25519-Challenge-Proof, Setup-Info/Aktivierungs-Polling, Passwort-/PIN-/TOTP-Login,
+Lizenzbanner, i18next ar/fr/en, RTL/LTR und TND-Formatierung. `scripts/test-all.sh`
+und CI führen die App-Kernprüfungen mit aus. Neue Tests: `app/test/app-core.test.ts`
+und Setup-Info im NestJS-Integrationstest. Offene Fragen: keine.
 
 ## T-104 · Offline-Sync in der App
 **Status:** offen · **Abhängig von:** T-103

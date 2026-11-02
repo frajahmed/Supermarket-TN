@@ -14,6 +14,7 @@ import { ProductsController } from './products/products.controller';
 import { ProductsService } from './products/products.service';
 import { UsersController } from './users/users.controller';
 import { UsersService } from './users/users.service';
+import { SetupController } from './setup/setup.controller';
 
 @Controller('health')
 class HealthController {
@@ -24,7 +25,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, InventoryController, ProductsController, UsersController],
+  controllers: [HealthController, AuthController, InventoryController, ProductsController, UsersController, SetupController],
   providers: [
     DbService,
     LicensingService,

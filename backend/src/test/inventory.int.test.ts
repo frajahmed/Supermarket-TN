@@ -179,6 +179,16 @@ test('ohne Token: 401', async () => {
   assert.equal(res.status, 401);
 });
 
+test('T-103: Setup-Info ist öffentlich und enthält keine Geheimnisse', async () => {
+  const res = await fetch(`${base}/api/v1/setup/info`);
+  assert.equal(res.status, 200);
+  const body = await res.json() as { installationId: string; licenseServerUrl: string; [key: string]: unknown };
+  assert.equal(body.installationId, (await admin.query<{ installation_id: string }>(
+    'SELECT installation_id FROM app.installation')).rows[0].installation_id);
+  assert.equal(body.licenseServerUrl.startsWith('http://127.0.0.1:'), true);
+  assert.equal(Object.hasOwn(body, 'installationSecret'), false);
+});
+
 test('Offline-Stapel: Annahme, Duplikat, Ablehnung – und Live-Event per WebSocket', async () => {
   const clerk = await token(CLERK_A, T_A, 'stock_clerk');
 
