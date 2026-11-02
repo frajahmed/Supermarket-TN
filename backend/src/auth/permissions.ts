@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   'product.write', 'price.update', 'stock.receive', 'stock.adjust', 'stock.read',
   'purchase.order', 'document.scan', 'sale.create', 'sale.void',
   'discount.approve', 'export.accounting', 'device.manage',
+  'customer.manage', 'sales.order', 'invoice.issue', 'payment.record',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -19,9 +20,10 @@ const ROLE_PERMISSIONS: Record<UserRole, ReadonlySet<Permission>> = {
     'user.manage', 'report.finance', 'report.stock', 'product.write', 'price.update',
     'stock.receive', 'stock.adjust', 'stock.read', 'purchase.order', 'document.scan',
     'sale.create', 'sale.void', 'discount.approve', 'export.accounting', 'device.manage',
+    'customer.manage', 'sales.order', 'invoice.issue', 'payment.record',
   ]),
   stock_clerk: new Set<Permission>([
-    'product.write', 'stock.receive', 'stock.adjust', 'stock.read', 'document.scan',
+    'product.write', 'stock.receive', 'stock.adjust', 'stock.read', 'document.scan', 'sales.order',
   ]),
   cashier: new Set<Permission>(['sale.create', 'stock.read']),
 };
