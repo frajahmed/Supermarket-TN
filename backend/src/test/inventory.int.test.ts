@@ -605,3 +605,93 @@ test('T-108: 2FA-Selbsteinrichtung, Fehlversuche, letzter Inhaber, gemischte Fil
     'SELECT store_id FROM app.user_store_access WHERE user_id = $1', [mixed.body.id]);
   assert.deepEqual(afterRemove.rows.map((r) => r.store_id), [STORE_A2], 'fremde Filiale bleibt erhalten');
 });
+
+test('T-105: Auftrag -> Kreditlimit bei Bestätigung -> Teillieferung -> Rechnung -> Dokument -> Gutschrift', async () => {
+  const CUSTOMER = randomUUID();
+  await admin.query(
+    `INSERT INTO app.customers (id, tenant_id, number, name, tax_id, payment_terms_days, credit_limit, preferred_locale)
+     VALUES ($1, $2, $3, 'Épicerie Test', '3333333C/A/000', 30, 10000, 'fr-TN')`,
+    [CUSTOMER, T_A, `K-${CUSTOMER.slice(0, 8)}`]);
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const clerk = await token(CLERK_A, T_A, 'stock_clerk');
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+
+  const orderBody = { storeId: STORE_A1, customerId: CUSTOMER, lines: [{ productId: MILK, quantity: '10' }], clientOpId: randomUUID() };
+  assert.equal((await api('/sales-orders', cashier, { method: 'POST', body: JSON.stringify(orderBody) })).status, 403);
+  const order = await api('/sales-orders', clerk, { method: 'POST', body: JSON.stringify(orderBody) });
+  assert.equal(order.status, 201);
+  assert.match(order.body.number, /^SO-\d{4}-\d{6}$/);
+  const again = await api('/sales-orders', clerk, { method: 'POST', body: JSON.stringify(orderBody) });
+  assert.equal(again.body.id, order.body.id, 'doppelt gesendeter Auftrag = ein Auftrag');
+  // 10 × 1,350 = 13,500 + 19 % 2,565 + Timbre 1,000 = 17,065 > Limit 10,000
+  assert.equal(order.body.estimatedGross, '17065');
+
+  // Kriterium 1: Kreditlimit blockiert die Bestätigung
+  const blocked = await api(`/sales-orders/${order.body.id}/confirm`, clerk, { method: 'POST', body: '{}' });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.code, 'CREDIT_LIMIT');
+  const managerOverride = await api(`/sales-orders/${order.body.id}/confirm`, manager, {
+    method: 'POST', body: JSON.stringify({ overrideReason: 'Stammkunde' }) });
+  assert.equal(managerOverride.status, 403, 'nur der Inhaber darf übersteuern');
+  const ownerOverride = await api(`/sales-orders/${order.body.id}/confirm`, owner, {
+    method: 'POST', body: JSON.stringify({ overrideReason: 'Zahlung zugesagt' }) });
+  assert.equal(ownerOverride.status, 200);
+  assert.equal(ownerOverride.body.status, 'confirmed');
+  const audit = await admin.query(`SELECT after FROM app.audit_log WHERE action = 'credit.override' AND entity_id = $1`, [order.body.id]);
+  assert.equal(audit.rows[0].after.reason, 'Zahlung zugesagt');
+
+  // Teillieferung 4 von 10
+  const lineId = ownerOverride.body.lines[0].id as string;
+  const deliveryBody = { clientOpId: randomUUID(), lines: [{ orderLineId: lineId, quantity: '4' }] };
+  const delivery = await api(`/sales-orders/${order.body.id}/deliveries`, clerk, { method: 'POST', body: JSON.stringify(deliveryBody) });
+  assert.equal(delivery.status, 201);
+  assert.match(delivery.body.number, /^BL-\d{4}-\d{6}$/);
+  const replay = await api(`/sales-orders/${order.body.id}/deliveries`, clerk, { method: 'POST', body: JSON.stringify(deliveryBody) });
+  assert.equal(replay.body.id, delivery.body.id, 'erneut gesendete Lieferung bucht nicht doppelt');
+  const over = await api(`/sales-orders/${order.body.id}/deliveries`, clerk, {
+    method: 'POST', body: JSON.stringify({ clientOpId: randomUUID(), lines: [{ orderLineId: lineId, quantity: '7' }] }) });
+  assert.equal(over.status, 422);
+  const moves = await admin.query(`SELECT sum(quantity_delta)::text AS q FROM app.stock_movements WHERE ref_type = 'sales_order' AND ref_id = $1`, [order.body.id]);
+  assert.equal(moves.rows[0].q, '-4.000', 'Lager um genau 4 reduziert');
+
+  // Kriterium 2: Rechnung nur über die gelieferte Menge
+  assert.equal((await api(`/deliveries/${delivery.body.id}/invoice`, clerk, { method: 'POST' })).status, 403);
+  const invoice = await api(`/deliveries/${delivery.body.id}/invoice`, manager, { method: 'POST' });
+  assert.equal(invoice.status, 201);
+  // 4 × 1,350 = 5,400 + 19 % 1,026 + Timbre 1,000 = 7,426
+  assert.deepEqual([invoice.body.netTotal, invoice.body.taxTotal, invoice.body.stampDuty, invoice.body.grossTotal],
+    ['5400', '1026', '1000', '7426']);
+
+  // Kriterium 3: Summen im Dokument = Summen in sales_invoices (Kassierer darf drucken)
+  const docRes = await fetch(`${base}/api/v1/invoices/${invoice.body.id}/document`, { headers: { authorization: `Bearer ${cashier}` } });
+  assert.equal(docRes.status, 200);
+  assert.match(docRes.headers.get('content-type') ?? '', /text\/html/);
+  const html = await docRes.text();
+  const db = (await admin.query(
+    `SELECT net_total::text AS net, tax_total::text AS tax, stamp_duty::text AS stamp, gross_total::text AS gross, number
+       FROM app.sales_invoices WHERE id = $1`, [invoice.body.id])).rows[0];
+  const attr = (name: string) => html.match(new RegExp(`${name}="([^"]*)"`))?.[1];
+  assert.deepEqual([attr('data-total-net'), attr('data-total-tax'), attr('data-total-stamp'), attr('data-total-gross')],
+    [db.net, db.tax, db.stamp, db.gross]);
+  assert.ok(html.includes(db.number) && html.includes('فاتورة') && html.includes('3333333C/A/000'));
+
+  const delDoc = await fetch(`${base}/api/v1/deliveries/${delivery.body.id}/document`, { headers: { authorization: `Bearer ${clerk}` } });
+  const delHtml = await delDoc.text();
+  assert.equal(delDoc.status, 200);
+  assert.ok(delHtml.includes('Bon de livraison') && delHtml.includes(delivery.body.number));
+  assert.equal(delHtml.includes('data-total-gross'), false, 'Lieferschein ohne Preise');
+
+  // Gutschrift mit Bezug
+  const credit = await api(`/invoices/${invoice.body.id}/credit-note`, manager, { method: 'POST', body: JSON.stringify({ reason: 'Ware beschädigt' }) });
+  assert.equal(credit.status, 201);
+  assert.match(credit.body.number, /^AV-\d{4}-\d{6}$/);
+  assert.equal(credit.body.creditNoteFor, invoice.body.id);
+  const second = await api(`/invoices/${invoice.body.id}/credit-note`, manager, { method: 'POST', body: JSON.stringify({ reason: 'nochmal' }) });
+  assert.equal(second.status, 422);
+
+  // Anderer Mandant
+  const foreign = await fetch(`${base}/api/v1/invoices/${invoice.body.id}/document`, {
+    headers: { authorization: `Bearer ${await token(OWNER_B, T_B, 'owner')}` } });
+  assert.equal(foreign.status, 404);
+});

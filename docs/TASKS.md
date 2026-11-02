@@ -5,7 +5,7 @@ CI auf GitHub (`.github/workflows/ci.yml`) führt bei jedem Push `scripts/test-a
 Status: `offen` → `in Arbeit (Agent)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Agent` (mit Befund).
 Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Definition of Done: siehe `AGENTS.md`.
 
-**Nächste Aufgabe:** T-103 (Nachbesserung), danach T-105.
+**Nächste Aufgabe:** T-103 (Nachbesserung, braucht Test auf echtem Gerät).
 
 ## Erledigt
 
@@ -57,7 +57,9 @@ Abnahmekriterien:
 2. Test: zwei Geräte buchen offline auf dasselbe Produkt → Endbestand = Summe beider.
 
 ## T-105 · B2B-Verkauf: Auftrag → Lieferschein → Rechnung
-**Status:** offen · **Abhängig von:** T-101
+**Status:** zur Prüfung (umgesetzt von Claude, Branch `agent/T-105-b2b-verkauf`) · **Abhängig von:** T-101
+
+**Abweichung (bewusst):** Rechnung und Lieferschein werden als druckfertiges HTML (A4, fr + ar) erzeugt, nicht direkt als PDF. PDF-Bibliotheken ohne Browser setzen Arabisch nicht korrekt (Buchstabenverbindung, Rechts-nach-links). Browser (Drucken → PDF) und App (`expo-print`) erzeugen daraus ein korrektes PDF. Kriterium 3 wird am Dokument geprüft.
 
 - API für `sales_orders` (anlegen, bestätigen, liefern), Preis über `app.price_for()`.
 - Lieferung bucht Bestand (`sale`-Bewegung je Position, `ref_type = 'sales_order'`).
