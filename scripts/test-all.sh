@@ -53,7 +53,7 @@ cd "$ROOT"
 # Angewendete Migrationen dürfen sich nie ändern (Prüfsummen von Claude gepflegt)
 if [ -f scripts/migration-checksums.txt ]; then
   if sha256sum --quiet -c scripts/migration-checksums.txt >/dev/null 2>&1; then
-    record ok "Migrationen 001–004 unverändert"
+    record ok "Angewendete Migrationen unverändert"
   else
     record fail "Angewendete Migration wurde verändert" "(neue Datei db/NNN_… anlegen statt ändern)"
   fi

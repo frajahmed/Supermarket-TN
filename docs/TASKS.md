@@ -1,9 +1,11 @@
-# Aufgaben (gepflegt von Claude, umgesetzt von Codex)
+# Aufgaben (gepflegt von Claude, umgesetzt vom Entwicklungs-Agenten – derzeit Antigravity)
 
 CI auf GitHub (`.github/workflows/ci.yml`) führt bei jedem Push `scripts/test-all.sh` aus – ein Pull Request wird nur mit grünem Lauf gemergt.
 
-Status: `offen` → `in Arbeit (Codex)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Codex` (mit Befund).
+Status: `offen` → `in Arbeit (Agent)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Agent` (mit Befund).
 Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Definition of Done: siehe `AGENTS.md`.
+
+**Nächste Aufgabe:** T-108, danach T-103.
 
 ## Erledigt
 
