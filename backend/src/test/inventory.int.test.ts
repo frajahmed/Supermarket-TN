@@ -596,7 +596,7 @@ test('T-108: 2FA-Selbsteinrichtung, Fehlversuche, letzter Inhaber, gemischte Fil
   const manager = await token(MANAGER_A, T_A, 'manager');
   const rename = await api(`/users/${mixed.body.id}`, manager, { method: 'PATCH', body: JSON.stringify({ displayName: 'Gemischt 2' }) });
   assert.equal(rename.status, 200, 'Filialleiter darf gemischten Nutzer bearbeiten');
-  assert.deepEqual([...rename.body.storeIds].sort(), [STORE_A1, STORE_A2].sort());
+  assert.deepEqual(rename.body.storeIds, [STORE_A1], 'fremde Filiale bleibt für den Filialleiter unsichtbar');
   const deactivateMixed = await api(`/users/${mixed.body.id}`, manager, { method: 'PATCH', body: JSON.stringify({ isActive: false }) });
   assert.equal(deactivateMixed.status, 403);
   const removeOwn = await api(`/users/${mixed.body.id}`, manager, { method: 'PATCH', body: JSON.stringify({ storeIds: [] }) });

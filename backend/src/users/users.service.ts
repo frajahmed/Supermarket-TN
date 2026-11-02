@@ -90,13 +90,17 @@ export class UsersService {
       const effectiveRole = body.role ?? before.role;
       this.assertRoleCanManage(ctx, effectiveRole);
       const manageAll = hasPermission(ctx.role, 'user.manage.all');
-      // Zuordnungen zu Filialen außerhalb des eigenen Bereichs bleiben unangetastet (T-108)
-      const foreignStores = manageAll ? [] : before.storeIds.filter((id) => !ctx.storeIds.includes(id));
-      if (!manageAll && body.isActive === false && foreignStores.length > 0) {
-        throw new ForbiddenException('Benutzer arbeitet auch in anderen Filialen – Deaktivieren nur durch den Inhaber');
+      // Gemischte Filialen (T-108): Filialleiter sehen fremde Zuordnungen wegen RLS nicht.
+      // Ob es welche gibt, beantwortet app.user_has_foreign_stores (db/007) als Ja/Nein.
+      // Beim Ersetzen löscht RLS ohnehin nur sichtbare Zuordnungen – fremde bleiben erhalten.
+      if (!manageAll && body.isActive === false) {
+        const foreign = await db.query<{ f: boolean }>('SELECT app.user_has_foreign_stores($1) AS f', [userId]);
+        if (foreign.rows[0]?.f) {
+          throw new ForbiddenException('Benutzer arbeitet auch in anderen Filialen – Deaktivieren nur durch den Inhaber');
+        }
       }
       if (body.storeIds !== undefined) await this.validateStores(db, ctx, body.storeIds);
-      const finalStores = body.storeIds === undefined ? undefined : [...foreignStores, ...body.storeIds];
+      const finalStores = body.storeIds;
 
       const values: unknown[] = [];
       const assignments: string[] = [];

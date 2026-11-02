@@ -53,4 +53,22 @@ CREATE TRIGGER users_guard_last_owner
   BEFORE UPDATE OF role, is_active, tenant_id OR DELETE ON app.users
   FOR EACH ROW EXECUTE FUNCTION app.guard_last_owner();
 
+-- -----------------------------------------------------------------------------
+-- Gemischte Filialen: Filialleiter sehen Zuordnungen zu fremden Filialen wegen RLS
+-- nicht. Diese Funktion beantwortet nur die Ja/Nein-Frage, ob es solche gibt –
+-- ohne die fremden Filialen preiszugeben.
+-- -----------------------------------------------------------------------------
+CREATE FUNCTION app.user_has_foreign_stores(p_user_id uuid) RETURNS boolean
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = app, pg_temp AS
+$$
+  SELECT EXISTS (
+    SELECT 1 FROM app.user_store_access
+     WHERE user_id = p_user_id
+       AND tenant_id = app.current_tenant_id()
+       AND NOT app.has_store_access(store_id))
+$$;
+ALTER FUNCTION app.user_has_foreign_stores(uuid) OWNER TO app_owner;
+REVOKE ALL ON FUNCTION app.user_has_foreign_stores(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.user_has_foreign_stores(uuid) TO app_user;
+
 COMMIT;
