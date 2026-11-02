@@ -59,3 +59,36 @@ export function decryptTotpSecret(value: Buffer, key: Buffer): string {
   decipher.setAuthTag(value.subarray(13, 29));
   return Buffer.concat([decipher.update(value.subarray(29)), decipher.final()]).toString('utf8');
 }
+
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+/** RFC-4648-Base32 ohne Auffüllzeichen (Format, das Authenticator-Apps erwarten). */
+export function base32Encode(bytes: Uint8Array): string {
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += BASE32_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += BASE32_ALPHABET[(value << (5 - bits)) & 31];
+  return out;
+}
+
+/** Neues TOTP-Geheimnis mit 160 Bit (RFC 4226 empfiehlt mindestens 128, besser 160). */
+export function generateTotpSecret(): string {
+  return base32Encode(randomBytes(20));
+}
+
+/** otpauth-URI für den QR-Code der Authenticator-App. */
+export function totpUri(secret: string, accountName: string, issuer = 'Supermarket-TN'): string {
+  const label = encodeURIComponent(`${issuer}:${accountName}`);
+  const params = new URLSearchParams({
+    secret, issuer, algorithm: 'SHA1', digits: String(TOTP_DIGITS), period: String(TOTP_STEP_SECONDS),
+  });
+  return `otpauth://totp/${label}?${params.toString()}`;
+}
