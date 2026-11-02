@@ -157,6 +157,8 @@ export class AuthFlow {
       }
       const step = matchingTotpStep(totpSecret, input.totp, this.now());
       if (step === null || !(await this.deps.repo.consumeTotpStep(user.userId, step))) {
+        // Zählt wie ein falsches Passwort – sonst ließe sich der 6-stellige Code ohne Sperre durchprobieren.
+        await this.deps.repo.recordLoginAttempt(user.userId, false, cert.did);
         throw new AuthError(401, 'TOTP-Code ungültig oder bereits verwendet');
       }
     }

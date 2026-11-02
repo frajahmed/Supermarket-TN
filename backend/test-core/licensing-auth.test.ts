@@ -229,6 +229,25 @@ test('TOTP: RFC-6238-Code, Zeitfenster und Replay-Schutz', async () => {
   assert.equal(nextLogin.user.role, 'manager');
 });
 
+test('T-108: falsche 2FA-Codes zählen als Fehlversuch – nach 5 gesperrt (423)', async () => {
+  const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+  repo.users.set('totp-brute@g.tn', { userId: randomUUID(), tenantId: TENANT, role: 'owner',
+    passwordHash: await hashSecret('Brute-Passwort-2026'), pinHash: null,
+    totpSecretEnc: encryptTotpSecret(secret, Buffer.alloc(32, 7)),
+    isActive: true, lockedUntil: null, failed: 0, totpLastStep: null });
+  const valid = generateTotpCode(secret, now);
+  const wrong = valid === '000000' ? '111111' : '000000';
+  for (let i = 0; i < 5; i++) {
+    await assert.rejects(
+      flow.login({ email: 'totp-brute@g.tn', password: 'Brute-Passwort-2026', totp: wrong, device: kasse.proof() }),
+      (e: AuthError) => e.status === 401 && /TOTP/.test(e.message));
+  }
+  // Selbst mit richtigem Passwort UND richtigem Code: gesperrt
+  await assert.rejects(
+    flow.login({ email: 'totp-brute@g.tn', password: 'Brute-Passwort-2026', totp: valid, device: kasse.proof() }),
+    (e: AuthError) => e.status === 423);
+});
+
 test('Falsches Passwort: generische Meldung, nach 5 Versuchen gesperrt', async () => {
   for (let i = 0; i < 5; i++) {
     await assert.rejects(flow.login({ email: 'chef@g.tn', password: 'falsch', device: handy.proof() }),

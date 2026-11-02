@@ -6,7 +6,6 @@ import { hashSecret } from '../../../shared/license-core.ts';
 import { hasPermission } from '../auth/permissions';
 import { AuthFlowProvider } from '../auth/auth.module-providers';
 import { RequestContext, UserRole } from '../auth/request-context';
-import { encryptTotpSecret } from '../core/totp.ts';
 import { DbService } from '../db/db.service';
 import { UserCreate, UserPatch } from './users.dto';
 
@@ -29,9 +28,20 @@ const USER_COLUMNS = `
   COALESCE(array_agg(usa.store_id) FILTER (WHERE usa.store_id IS NOT NULL), '{}') AS "storeIds",
   u.created_at AS "createdAt", u.updated_at AS "updatedAt"`;
 
-function isUniqueError(error: unknown): boolean {
+function pgCode(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error
-    && (error as { code?: string }).code === '23505';
+    ? (error as { code?: string }).code : undefined;
+}
+
+function isUniqueError(error: unknown): boolean {
+  return pgCode(error) === '23505';
+}
+
+/** SN409 = Trigger app.guard_last_owner (db/007): letzter aktiver Inhaber. */
+function mapLastOwner(error: unknown): never | void {
+  if (pgCode(error) === 'SN409') {
+    throw new ConflictException('Der letzte aktive Inhaber kann nicht deaktiviert oder herabgestuft werden – zuerst einen weiteren Inhaber anlegen');
+  }
 }
 
 @Injectable()
@@ -46,25 +56,22 @@ export class UsersService {
 
   async create(ctx: RequestContext, body: UserCreate): Promise<UserRow> {
     this.assertRoleCanManage(ctx, body.role);
-    this.assertTotpRole(body.role, body.totpSecret);
     if ((body.role === 'owner' || body.role === 'manager') && body.password === undefined) {
       throw new BadRequestException('Für Inhaber und Filialleiter ist ein Passwort erforderlich');
     }
     const passwordHash = body.password === undefined ? null : await hashSecret(body.password);
     const pinHash = body.pin === undefined ? null : await hashSecret(body.pin);
-    const totpSecretEnc = body.totpSecret === undefined
-      ? null : encryptTotpSecret(body.totpSecret, this.auth.totpKey);
 
     return this.db.withTenant(ctx, async (db) => {
       await this.validateStores(db, ctx, body.storeIds);
       try {
         const inserted = await db.query<{ id: string }>(
           `INSERT INTO app.users
-             (tenant_id, email, display_name, role, password_hash, pin_hash, locale, is_active, totp_secret_enc)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8)
+             (tenant_id, email, display_name, role, password_hash, pin_hash, locale, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, true)
            RETURNING id`,
           [ctx.tenantId, body.email.trim().toLowerCase(), body.displayName, body.role,
-           passwordHash, pinHash, body.locale ?? null, totpSecretEnc],
+           passwordHash, pinHash, body.locale ?? null],
         );
         const userId = inserted.rows[0].id;
         await this.replaceStores(db, ctx.tenantId, userId, body.storeIds);
@@ -82,8 +89,18 @@ export class UsersService {
       const before = await this.requireVisibleUser(db, ctx, userId);
       const effectiveRole = body.role ?? before.role;
       this.assertRoleCanManage(ctx, effectiveRole);
-      this.assertTotpRole(effectiveRole, body.totpSecret);
-      await this.validateStores(db, ctx, body.storeIds ?? before.storeIds);
+      const manageAll = hasPermission(ctx.role, 'user.manage.all');
+      // Gemischte Filialen (T-108): Filialleiter sehen fremde Zuordnungen wegen RLS nicht.
+      // Ob es welche gibt, beantwortet app.user_has_foreign_stores (db/007) als Ja/Nein.
+      // Beim Ersetzen löscht RLS ohnehin nur sichtbare Zuordnungen – fremde bleiben erhalten.
+      if (!manageAll && body.isActive === false) {
+        const foreign = await db.query<{ f: boolean }>('SELECT app.user_has_foreign_stores($1) AS f', [userId]);
+        if (foreign.rows[0]?.f) {
+          throw new ForbiddenException('Benutzer arbeitet auch in anderen Filialen – Deaktivieren nur durch den Inhaber');
+        }
+      }
+      if (body.storeIds !== undefined) await this.validateStores(db, ctx, body.storeIds);
+      const finalStores = body.storeIds;
 
       const values: unknown[] = [];
       const assignments: string[] = [];
@@ -97,15 +114,17 @@ export class UsersService {
       if (body.pin !== undefined) add('pin_hash', body.pin === null ? null : await hashSecret(body.pin));
       if (body.locale !== undefined) add('locale', body.locale);
       if (body.isActive !== undefined) add('is_active', body.isActive);
-      if (body.totpSecret !== undefined) {
-        add('totp_secret_enc', body.totpSecret === null ? null : encryptTotpSecret(body.totpSecret, this.auth.totpKey));
+      if (body.totpSecret === null) {
+        add('totp_secret_enc', null);
+        add('totp_pending_enc', null);
+        add('totp_pending_at', null);
       }
 
       try {
         if (assignments.length > 0) {
           await db.query(`UPDATE app.users SET ${assignments.join(', ')} WHERE id = $1`, [userId, ...values]);
         }
-        if (body.storeIds !== undefined) await this.replaceStores(db, ctx.tenantId, userId, body.storeIds);
+        if (finalStores !== undefined) await this.replaceStores(db, ctx.tenantId, userId, finalStores);
         if (body.isActive === false) {
           await db.query(
             `UPDATE app.refresh_tokens SET revoked_at = coalesce(revoked_at, now())
@@ -115,9 +134,16 @@ export class UsersService {
         }
         await this.audit(db, ctx, body.isActive === false ? 'user.deactivate' : 'user.update', userId, {
           role: effectiveRole, isActive: body.isActive ?? before.isActive,
+          ...(body.totpSecret === null ? { totpReset: true } : {}),
         });
+        // Hat ein Filialleiter seine letzte gemeinsame Filiale entfernt, ist der Nutzer danach
+        // außerhalb seines Bereichs: Änderung bleibt gültig, Antwort nur noch minimal.
+        if (!manageAll && finalStores !== undefined && !finalStores.some((id) => ctx.storeIds.includes(id))) {
+          return { id: userId, outOfScope: true } as unknown as UserRow;
+        }
         return this.requireVisibleUser(db, ctx, userId);
       } catch (error: unknown) {
+        mapLastOwner(error);
         if (isUniqueError(error)) throw new ConflictException('E-Mail ist im Mandanten bereits vergeben');
         throw error;
       }
@@ -128,12 +154,6 @@ export class UsersService {
     if (hasPermission(ctx.role, 'user.manage.all')) return;
     if (targetRole !== 'stock_clerk' && targetRole !== 'cashier') {
       throw new ForbiddenException('Filialleiter dürfen nur Lageristen und Kassierer verwalten');
-    }
-  }
-
-  private assertTotpRole(role: UserRole, secret: string | null | undefined): void {
-    if (secret !== undefined && role !== 'owner' && role !== 'manager') {
-      throw new BadRequestException('TOTP ist nur für Inhaber und Filialleiter verfügbar');
     }
   }
 

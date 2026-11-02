@@ -5,7 +5,7 @@ CI auf GitHub (`.github/workflows/ci.yml`) führt bei jedem Push `scripts/test-a
 Status: `offen` → `in Arbeit (Agent)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Agent` (mit Befund).
 Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Definition of Done: siehe `AGENTS.md`.
 
-**Nächste Aufgabe:** T-108, danach T-103.
+**Nächste Aufgabe:** T-103 (Nachbesserung), danach T-105.
 
 ## Erledigt
 
@@ -22,7 +22,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 ---
 
 ## T-108 · Sicherheit Anmeldung und Benutzerverwaltung (aus Prüfung von T-102)
-**Status:** offen · **Priorität:** hoch – vor jedem Kundeneinsatz · **Abhängig von:** – (parallel zu T-103 möglich)
+**Status:** zur Prüfung (umgesetzt von Claude, Branch `agent/T-108-sicherheit`) · **Priorität:** hoch – vor jedem Kundeneinsatz
 
 1. **Falscher 2FA-Code zählt als Fehlversuch:** `recordLoginAttempt(false)` auch bei falschem oder wiederverwendetem TOTP-Code; Sperre greift wie beim Passwort.
 2. **2FA-Einrichtung durch den Nutzer selbst:**

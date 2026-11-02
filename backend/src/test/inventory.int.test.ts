@@ -29,6 +29,7 @@ import { openDatabase } from '../../../license-server/src/db.ts';
 import { createLicenseServer } from '../../../license-server/src/http.ts';
 import { LicenseService } from '../../../license-server/src/service.ts';
 import { signJwt } from '../core/jwt.ts';
+import { generateTotpCode } from '../core/totp.ts';
 import { AppModule } from '../app.module';
 import { formatAmount, parseAmount, taxFromGross } from '../common/money';
 
@@ -460,11 +461,10 @@ test('T-102: Benutzerverwaltung, Filialgrenze, TOTP und deaktivierter Refresh', 
     body: JSON.stringify({
       email: `manager-${randomUUID()}@a.tn`, displayName: 'Neuer Filialleiter', role: 'manager',
       password: 'Neues-Passwort-2026', storeIds: [STORE_A1],
-      totpSecret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ',
     }),
   });
   assert.equal(created.status, 201);
-  assert.equal(created.body.totpConfigured, true);
+  assert.equal(created.body.totpConfigured, false, '2FA richtet der Nutzer selbst ein (T-108)');
 
   const manager = await token(MANAGER_A, T_A, 'manager');
   const managerOwner = await api('/users', manager, {
@@ -502,4 +502,106 @@ test('T-102: Benutzerverwaltung, Filialgrenze, TOTP und deaktivierter Refresh', 
   assert.equal(disabled.status, 200);
   const refresh = await post('/auth/refresh', { refreshToken: login.body.refreshToken });
   assert.equal(refresh.status, 401);
+});
+
+test('T-108: 2FA-Selbsteinrichtung, Fehlversuche, letzter Inhaber, gemischte Filialen', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const proof = async () => {
+    const challenge = await post('/auth/challenge', {});
+    return { certificate: deviceCert, challenge: challenge.body.challenge, signature: signChallenge(challenge.body.challenge, deviceKey) };
+  };
+
+  // Kriterium 3: Geheimnis kann nicht mehr vom Ersteller gesetzt werden
+  const withSecret = await api('/users', owner, {
+    method: 'POST',
+    body: JSON.stringify({ email: `x-${randomUUID()}@a.tn`, displayName: 'X', role: 'manager',
+      password: 'Neues-Passwort-2026', storeIds: [STORE_A1], totpSecret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ' }),
+  });
+  assert.equal(withSecret.status, 400);
+
+  const email = `m2fa-${randomUUID()}@a.tn`;
+  const created = await api('/users', owner, {
+    method: 'POST',
+    body: JSON.stringify({ email, displayName: 'Filialleiter 2FA', role: 'manager', password: 'M2fa-Passwort-2026', storeIds: [STORE_A1] }),
+  });
+  assert.equal(created.status, 201);
+  const managerId = created.body.id as string;
+  const patchSecret = await api(`/users/${managerId}`, owner, {
+    method: 'PATCH', body: JSON.stringify({ totpSecret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ' }),
+  });
+  assert.equal(patchSecret.status, 400, 'Setzen per PATCH verboten, nur Zurücksetzen (null)');
+
+  // Kriterium 2: Setup -> noch kein Code nötig -> falscher Code scheitert -> richtiger Code aktiviert
+  const me = await token(managerId, T_A, 'manager');
+  const setup = await api('/me/2fa/setup', me, { method: 'POST' });
+  assert.equal(setup.status, 200);
+  assert.match(setup.body.secret, /^[A-Z2-7]{32}$/);
+  assert.match(setup.body.otpauthUri, /^otpauth:\/\/totp\//);
+  const pendingLogin = await post('/auth/login', { email, password: 'M2fa-Passwort-2026', device: await proof() });
+  assert.equal(pendingLogin.status, 200, 'ausstehende Einrichtung verlangt noch keinen Code');
+
+  const now = Math.floor(Date.now() / 1000);
+  const good = generateTotpCode(setup.body.secret, now);
+  const bad = good === '000000' ? '111111' : '000000';
+  assert.equal((await api('/me/2fa/confirm', me, { method: 'POST', body: JSON.stringify({ code: bad }) })).status, 400);
+  const confirmed = await api('/me/2fa/confirm', me, { method: 'POST', body: JSON.stringify({ code: good }) });
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.body.totpConfigured, true);
+
+  const noCode = await post('/auth/login', { email, password: 'M2fa-Passwort-2026', device: await proof() });
+  assert.equal(noCode.status, 401);
+  assert.match(String(noCode.body.message), /TOTP-Code erforderlich/);
+  const withCode = await post('/auth/login', {
+    email, password: 'M2fa-Passwort-2026', totp: generateTotpCode(setup.body.secret, now + 30), device: await proof(),
+  });
+  assert.equal(withCode.status, 200);
+
+  const cashierSetup = await api('/me/2fa/setup', await token(CLERK_A, T_A, 'stock_clerk'), { method: 'POST' });
+  assert.equal(cashierSetup.status, 403);
+
+  // Kriterium 1 über HTTP: 5 falsche Codes -> gesperrt, auch mit richtigem Code
+  for (let i = 0; i < 5; i++) {
+    const r = await post('/auth/login', { email, password: 'M2fa-Passwort-2026', totp: bad, device: await proof() });
+    assert.equal(r.status, 401);
+  }
+  const locked = await post('/auth/login', {
+    email, password: 'M2fa-Passwort-2026', totp: generateTotpCode(setup.body.secret, now + 60), device: await proof(),
+  });
+  assert.equal(locked.status, 423);
+
+  // Inhaber setzt 2FA zurück
+  const reset = await api(`/users/${managerId}`, owner, { method: 'PATCH', body: JSON.stringify({ totpSecret: null }) });
+  assert.equal(reset.status, 200);
+  assert.equal(reset.body.totpConfigured, false);
+
+  // Kriterium 4: letzter Inhaber
+  const selfDeactivate = await api(`/users/${OWNER_A}`, owner, { method: 'PATCH', body: JSON.stringify({ isActive: false }) });
+  assert.equal(selfDeactivate.status, 409);
+  const selfDemote = await api(`/users/${OWNER_A}`, owner, { method: 'PATCH', body: JSON.stringify({ role: 'manager' }) });
+  assert.equal(selfDemote.status, 409);
+  const second = await api('/users', owner, {
+    method: 'POST',
+    body: JSON.stringify({ email: `owner2-${randomUUID()}@a.tn`, displayName: 'Zweiter Inhaber', role: 'owner', password: 'Owner2-Passwort-2026' }),
+  });
+  assert.equal(second.status, 201);
+  const deactivateSecond = await api(`/users/${second.body.id}`, owner, { method: 'PATCH', body: JSON.stringify({ isActive: false }) });
+  assert.equal(deactivateSecond.status, 200, 'mit zweitem aktivem Inhaber erlaubt');
+
+  // Kriterium 5: gemischter Lagerist (Filiale A1 des Filialleiters + fremde Filiale A2)
+  const mixed = await api('/users', owner, {
+    method: 'POST',
+    body: JSON.stringify({ email: `mixed-${randomUUID()}@a.tn`, displayName: 'Gemischt', role: 'stock_clerk', pin: '2468', storeIds: [STORE_A1, STORE_A2] }),
+  });
+  assert.equal(mixed.status, 201);
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const rename = await api(`/users/${mixed.body.id}`, manager, { method: 'PATCH', body: JSON.stringify({ displayName: 'Gemischt 2' }) });
+  assert.equal(rename.status, 200, 'Filialleiter darf gemischten Nutzer bearbeiten');
+  assert.deepEqual(rename.body.storeIds, [STORE_A1], 'fremde Filiale bleibt für den Filialleiter unsichtbar');
+  const deactivateMixed = await api(`/users/${mixed.body.id}`, manager, { method: 'PATCH', body: JSON.stringify({ isActive: false }) });
+  assert.equal(deactivateMixed.status, 403);
+  const removeOwn = await api(`/users/${mixed.body.id}`, manager, { method: 'PATCH', body: JSON.stringify({ storeIds: [] }) });
+  assert.equal(removeOwn.status, 200);
+  const afterRemove = await admin.query<{ store_id: string }>(
+    'SELECT store_id FROM app.user_store_access WHERE user_id = $1', [mixed.body.id]);
+  assert.deepEqual(afterRemove.rows.map((r) => r.store_id), [STORE_A2], 'fremde Filiale bleibt erhalten');
 });
