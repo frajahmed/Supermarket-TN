@@ -61,6 +61,31 @@ function isUniqueError(error: unknown): boolean {
   return isPgError(error, '23505');
 }
 
+function pgConstraint(error: unknown): string | undefined {
+  return typeof error === 'object' && error !== null && 'constraint' in error
+    ? (error as { constraint?: string }).constraint
+    : undefined;
+}
+
+function pgMessage(error: unknown): string {
+  return typeof error === 'object' && error !== null && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
+type ProductResponse = Omit<ProductRow, 'purchasePrice'> & { purchasePrice?: string | null };
+
+/** Entfernt sensible Einkaufspreise zentral aus jeder Produktantwort. */
+function presentProduct(ctx: RequestContext, product: ProductRow): ProductResponse {
+  if (hasPermission(ctx.role, 'report.finance')) return product;
+  const { purchasePrice: _purchasePrice, ...visible } = product;
+  return visible;
+}
+
 type ProductCursor = { createdAt: string; id: string };
 
 function encodeCursor(cursor: ProductCursor): string {
@@ -91,26 +116,27 @@ export class ProductsService {
 
   async list(ctx: RequestContext, query: ProductQuery) {
     const cursor = decodeCursor(query.cursor);
+    const search = query.q === undefined ? null : escapeLike(query.q);
     return this.db.withTenant(ctx, async (db) => {
       const result = await db.query<ProductRow>(
         `SELECT ${PRODUCT_COLUMNS}
            FROM app.products p
           WHERE ($1::text IS NULL
-             OR p.sku ILIKE '%' || $1 || '%'
-             OR p.name->>'fr' ILIKE '%' || $1 || '%'
-             OR p.name->>'ar' ILIKE '%' || $1 || '%'
-             OR p.name->>'en' ILIKE '%' || $1 || '%')
+             OR p.sku ILIKE '%' || $1 || '%' ESCAPE E'\\\\'
+             OR p.name->>'fr' ILIKE '%' || $1 || '%' ESCAPE E'\\\\'
+             OR p.name->>'ar' ILIKE '%' || $1 || '%' ESCAPE E'\\\\'
+             OR p.name->>'en' ILIKE '%' || $1 || '%' ESCAPE E'\\\\')
             AND ($2::uuid IS NULL OR p.category_id = $2::uuid)
             AND ($3::timestamptz IS NULL
               OR (p.created_at, p.id) > ($3::timestamptz, $4::uuid))
           ORDER BY p.created_at, p.id
           LIMIT $5`,
-        [query.q ?? null, query.categoryId ?? null, cursor?.createdAt ?? null, cursor?.id ?? null, query.limit + 1],
+        [search, query.categoryId ?? null, cursor?.createdAt ?? null, cursor?.id ?? null, query.limit + 1],
       );
       const items = result.rows.slice(0, query.limit);
       const last = items.at(-1);
       return {
-        items,
+        items: items.map((product) => presentProduct(ctx, product)),
         nextCursor: result.rows.length > query.limit && last
           ? encodeCursor({ createdAt: last.createdAt.toISOString(), id: last.id })
           : null,
@@ -142,7 +168,7 @@ export class ProductsService {
 
       if (!match) throw new NotFoundException('Barcode nicht gefunden');
       return {
-        product: match,
+        product: presentProduct(ctx, match),
         barcode: { code: match.barcodeCode, symbology: match.symbology },
         packaging: match.packagingId ? {
           id: match.packagingId,
@@ -179,7 +205,17 @@ export class ProductsService {
            body.trackExpiry ?? null, body.nutrition === undefined ? null : JSON.stringify(body.nutrition),
            body.allergens ?? null, body.imageKey ?? null, body.source ?? null, body.isActive ?? null, ctx.userId],
         );
-        return this.requireProduct(db, inserted.rows[0].id);
+        const product = await this.requireProduct(db, inserted.rows[0].id);
+        if (body.purchasePrice !== undefined || body.salePrice !== undefined) {
+          await db.query(
+            `INSERT INTO app.audit_log
+               (tenant_id, user_id, action, entity_type, entity_id, before, after)
+             VALUES ($1, $2, 'price.update', 'product', $3, NULL, $4::jsonb)`,
+            [ctx.tenantId, ctx.userId, product.id,
+             JSON.stringify({ purchasePrice: product.purchasePrice, salePrice: product.salePrice })],
+          );
+        }
+        return presentProduct(ctx, product);
       } catch (error: unknown) {
         if (isUniqueError(error)) throw new ConflictException('SKU ist im Mandanten bereits vergeben');
         throw error;
@@ -236,7 +272,7 @@ export class ProductsService {
            JSON.stringify({ purchasePrice: product.purchasePrice, salePrice: product.salePrice })],
         );
       }
-      return product;
+      return presentProduct(ctx, product);
     });
   }
 
@@ -283,9 +319,14 @@ export class ProductsService {
         return { id: result.rows[0].id, productId, ...body };
       } catch (error: unknown) {
         if (isUniqueError(error)) {
-          const message = body.gtin
-            ? 'Barcode ist im Mandanten bereits vergeben'
-            : 'Gebinde-Code ist für dieses Produkt bereits vergeben';
+          const constraint = pgConstraint(error);
+          const message = constraint === 'product_packagings_tenant_id_product_id_code_key'
+            ? 'Gebinde-Code ist für dieses Produkt bereits vergeben'
+            : constraint === 'product_packagings_gtin_unique'
+              ? 'GTIN ist im Mandanten bereits vergeben'
+              : pgMessage(error).includes('Barcode')
+                ? 'Barcode ist im Mandanten bereits vergeben'
+                : 'Gebinde oder GTIN ist bereits vergeben';
           throw new ConflictException(message);
         }
         throw error;

@@ -18,7 +18,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 ---
 
 ## T-107 · Einkaufspreise nach Rolle verbergen (aus Prüfung von T-101)
-**Status:** offen · **Priorität:** höchste – vor jedem Kundeneinsatz · **Abhängig von:** –
+**Status:** zur Prüfung · **Priorität:** höchste – vor jedem Kundeneinsatz · **Abhängig von:** –
 
 Befund: `GET /products` und `GET /products/by-barcode/:code` liefern `purchasePrice` an alle Rollen. Laut Berechtigungsmatrix dürfen nur Rollen mit Recht `report.finance` (Inhaber, Filialleiter) Einkaufspreise sehen.
 
@@ -32,6 +32,10 @@ Abnahmekriterien:
 2. Test: Suche nach `50%` findet nur Produkte mit „50%“ im Namen, nicht alle mit „50“.
 3. Test: Konflikt beim Gebinde-Code liefert 409 „Gebinde-Code …“, auch wenn eine GTIN mitgeschickt wird.
 4. Test: Anlegen mit `salePrice` erzeugt einen Audit-Eintrag.
+
+Umsetzung: Einkaufspreise werden zentral anhand von `report.finance` aus Produktantworten entfernt; Literalsuche escaped `%`, `_` und `\\`; Gebinde-Konflikte unterscheiden Constraint-basiert Gebinde-Code und GTIN; Produktanlage mit Preis schreibt `price.update` mit `before = null` in das Audit-Log.
+Neue Tests: erweiterte NestJS-Integrationstests für Rollen-Sichtbarkeit in Liste/Scan/Ändern, Literalsuche, Gebinde-Code-Konflikt und Erstellungs-Audit.
+Offene Fragen: keine.
 
 ## T-102 · Benutzerverwaltung und 2FA
 **Status:** offen · **Abhängig von:** –
