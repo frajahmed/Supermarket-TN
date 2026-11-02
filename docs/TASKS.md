@@ -17,6 +17,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-004 | Login mit Gerätezertifikat, PIN, Refresh-Rotation (`db/004`, `backend/src/core`) | `backend/test-core/` (16), `db/tests/004_auth_test.sql` (A1–A6) |
 | T-101 | Produkt-API: Suche, Barcode/GTIN-Scan, Gebinde, Preisrecht, Audit (`db/005`) – PR #1 | `db/tests/005_product_barcode_test.sql` (P1–P4), NestJS-Integrationstests |
 | T-102 | Benutzerverwaltung, Filialrechte, TOTP-2FA mit Replay-Schutz (`db/006`) – PR #3 | `db/tests/006_…`, `backend/test-core/totp.test.ts`, NestJS-Integrationstest |
+| T-105 | B2B-Verkauf: Auftrag mit Kreditprüfung, Teillieferung + Lager, Rechnung je Lieferung, Gutschrift, Dokumente fr+ar (`db/008`) – PR #6 | `db/tests/008_sales_flow_test.sql` (S1–S9), Dokument- und Integrationstests |
 | T-108 | 2FA-Fehlversuche zählen, 2FA-Selbsteinrichtung, letzter Inhaber geschützt, gemischte Filialen (`db/007`) – PR #5 | `db/tests/007_…` (O1–O7), Kern- und Integrationstests, Gleichzeitigkeitstest |
 | T-107 | Einkaufspreise nur mit `report.finance`, Literalsuche, Konfliktmeldungen, Audit beim Anlegen – PR #2 | NestJS-Integrationstest „T-107“ |
 
@@ -56,21 +57,6 @@ Abnahmekriterien:
 1. Test: 200 Buchungen offline, Verbindung wieder da → alle genau einmal auf dem Server (Idempotenz).
 2. Test: zwei Geräte buchen offline auf dasselbe Produkt → Endbestand = Summe beider.
 
-## T-105 · B2B-Verkauf: Auftrag → Lieferschein → Rechnung
-**Status:** zur Prüfung (umgesetzt von Claude, Branch `agent/T-105-b2b-verkauf`) · **Abhängig von:** T-101
-
-**Abweichung (bewusst):** Rechnung und Lieferschein werden als druckfertiges HTML (A4, fr + ar) erzeugt, nicht direkt als PDF. PDF-Bibliotheken ohne Browser setzen Arabisch nicht korrekt (Buchstabenverbindung, Rechts-nach-links). Browser (Drucken → PDF) und App (`expo-print`) erzeugen daraus ein korrektes PDF. Kriterium 3 wird am Dokument geprüft.
-
-- API für `sales_orders` (anlegen, bestätigen, liefern), Preis über `app.price_for()`.
-- Lieferung bucht Bestand (`sale`-Bewegung je Position, `ref_type = 'sales_order'`).
-- Rechnung aus Lieferung erzeugen und über `app.issue_invoice()` ausstellen; Gutschrift (`AV`-Serie) mit Bezug.
-- PDF von Rechnung und Lieferschein (fr + ar), Matricule fiscal beider Seiten, TVA je Satz, Timbre.
-
-Abnahmekriterien:
-1. Kreditlimit blockiert die Bestätigung eines Auftrags (nicht erst die Rechnung). Inhaber kann mit Begründung übersteuern (Audit-Eintrag).
-2. Teillieferung: Rechnung nur über die gelieferte Menge.
-3. PDF-Snapshot-Test: Summen im PDF = Summen in `sales_invoices`.
-
 ## T-106 · TTN/El Fatoora-Anbindung (vorbereiten)
 **Status:** blockiert – offizielle TEIF-Spezifikation und Testzugang fehlen (Ahmed besorgt)
 
@@ -89,3 +75,4 @@ Abnahmekriterien:
 | 2026-11-02 | T-102 (PR #3) | erledigt (nachträglich geprüft) | Ohne vorherige Prüfung gemergt. CI grün, alle 3 Kriterien erfüllt. Befunde: 2FA ohne Fehlversuch-Zählung durchprobierbar, Einrichtung durch Ersteller, letzter Inhaber, gemischte Filialen → T-108. |
 | 2026-11-03 | T-103 (PR #4) | zurück an Agent | CI grün, aber nur Logik getestet. Blockierend: keine Zufallsquelle für Schlüsselerzeugung auf dem Gerät, RTL erst nach Neustart, App-Typprüfung fehlt in CI. Dazu i18n, Fehlerbehandlung, HTTPS. |
 | 2026-11-03 | T-108 (PR #5) | erledigt (von Claude umgesetzt) | CI 18/18 grün. Lücke bei gemischten Filialen (RLS verbirgt fremde Zuordnungen) während der Umsetzung durch CI gefunden und behoben. |
+| 2026-11-03 | T-105 (PR #6) | erledigt (von Claude umgesetzt) | CI 19/19 grün beim ersten Lauf. Dokumente als HTML statt PDF (Arabisch), begründet in PR. |
