@@ -42,7 +42,15 @@ Abnahmekriterien:
 5. Test: Filialleiter entfernt eigene Filiale bei gemischtem Lageristen → fremde Zuordnung bleibt; Deaktivieren → 403.
 
 ## T-103 · Expo-App: Freischaltung, Anmeldung, Sprachen
-**Status:** offen – kann starten · **Abhängig von:** T-102 (erledigt)
+**Status:** zurück an Agent (PR #4, Branch `codex/T-103-app` weiterverwenden) · **Abhängig von:** T-102 (erledigt)
+
+**Befunde aus der Prüfung (alle beheben, Details im Kommentar zu PR #4):**
+1. Blockierend: `tweetnacl` ohne Zufallsquelle → Schlüsselerzeugung wirft auf dem Gerät „no PRNG“. `expo-crypto` + `nacl.setPRNG(...)`, mit Test.
+2. Blockierend: `forceRTL` wirkt erst nach Reload → Sprache speichern, beim Start anwenden, nach Wechsel neu laden, Eingaben sichern.
+3. Blockierend: App-Typprüfung (`tsc -p app/tsconfig.json`) fehlt in `scripts/test-all.sh`/CI.
+4. Feste deutsche Texte → i18n-Schlüssel.
+5. Fehlerbehandlung in `startSetup()`, Polling nach Freigabe stoppen und zur Anmeldung wechseln.
+6. Server-Adresse nur `https://` (außer `__DEV__`).
 
 Neuer Ordner `app/` (Expo, TypeScript, expo-router):
 - **Erststart:** Schlüsselpaar Ed25519 erzeugen, privater Schlüssel in `expo-secure-store` (Hardware-gestützt, wo verfügbar). Kundenserver-Adresse per QR-Code oder Eingabe; Installations-ID kommt vom Kundenserver (`GET /api/v1/setup/info`, neuer öffentlicher Endpunkt).
@@ -96,3 +104,4 @@ Abnahmekriterien:
 | 2026-11-02 | T-101 (PR #1) | erledigt | CI 16/16 grün, 0 übersprungen (inkl. 11 NestJS-Integrationstests). Alle 5 Kriterien erfüllt. Befund Einkaufspreis-Sichtbarkeit → T-107. Positiv: Startreihenfolge-Fehler in Lizenz/Auth behoben. |
 | 2026-11-02 | T-107 (PR #2) | erledigt | CI grün, alle 4 Kriterien erfüllt, Constraint-Name gegen DB verifiziert. Keine Befunde. |
 | 2026-11-02 | T-102 (PR #3) | erledigt (nachträglich geprüft) | Ohne vorherige Prüfung gemergt. CI grün, alle 3 Kriterien erfüllt. Befunde: 2FA ohne Fehlversuch-Zählung durchprobierbar, Einrichtung durch Ersteller, letzter Inhaber, gemischte Filialen → T-108. |
+| 2026-11-03 | T-103 (PR #4) | zurück an Agent | CI grün, aber nur Logik getestet. Blockierend: keine Zufallsquelle für Schlüsselerzeugung auf dem Gerät, RTL erst nach Neustart, App-Typprüfung fehlt in CI. Dazu i18n, Fehlerbehandlung, HTTPS. |
