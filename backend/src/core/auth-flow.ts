@@ -16,6 +16,7 @@ import {
 } from '../../../shared/license-core.ts';
 import { signJwt, type AccessClaims } from './jwt.ts';
 import type { LicenseGate } from './license-gate.ts';
+import { decryptTotpSecret, matchingTotpStep } from './totp.ts';
 
 export type Role = AccessClaims['role'];
 
@@ -31,7 +32,7 @@ export class AuthError extends Error {
 export interface AuthRepo {
   loginCandidate(email: string): Promise<{
     userId: string; tenantId: string; role: Role; passwordHash: string | null; pinHash: string | null;
-    isActive: boolean; lockedUntil: number | null;
+    totpSecretEnc: Buffer | null; isActive: boolean; lockedUntil: number | null;
   } | null>;
   recordLoginAttempt(userId: string, success: boolean, deviceId: string): Promise<void>;
   /** Legt das Gerät beim ersten Login an; liefert false, wenn der Inhaber es lokal gesperrt hat. */
@@ -41,6 +42,7 @@ export interface AuthRepo {
     | { status: 'ok'; userId: string; tenantId: string; role: Role; deviceId: string }
     | { status: 'reuse' | 'invalid' }>;
   revokeRefreshFamily(tokenHash: Buffer): Promise<void>;
+  consumeTotpStep(userId: string, step: number): Promise<boolean>;
 }
 
 /** Einmal-Challenges: 60 Sekunden gültig, nur einmal verwendbar. Lokaler Server = ein Prozess -> Speicher genügt. */
@@ -71,6 +73,7 @@ export interface LoginInput {
   email: string;
   password?: string;
   pin?: string;
+  totp?: string;
   device: { certificate: string; challenge: string; signature: string };
 }
 
@@ -91,7 +94,7 @@ const sha256 = (s: string) => createHash('sha256').update(s).digest();
 export class AuthFlow {
   private readonly deps: {
     repo: AuthRepo; gate: LicenseGate; challenges: ChallengeStore;
-    licensePublicKey: KeyObject; installationId: string; jwtKey: KeyObject; clock?: () => number;
+    licensePublicKey: KeyObject; installationId: string; jwtKey: KeyObject; totpKey: Buffer; clock?: () => number;
   };
   constructor(deps: AuthFlow['deps']) {
     this.deps = deps;
@@ -142,6 +145,20 @@ export class AuthFlow {
     if (!secretOk) {
       await this.deps.repo.recordLoginAttempt(user.userId, false, cert.did);
       throw new AuthError(401, 'Anmeldung fehlgeschlagen');
+    }
+
+    if (user.totpSecretEnc) {
+      if (!input.totp) throw new AuthError(401, 'TOTP-Code erforderlich');
+      let totpSecret: string;
+      try {
+        totpSecret = decryptTotpSecret(user.totpSecretEnc, this.deps.totpKey);
+      } catch {
+        throw new AuthError(500, 'Zwei-Faktor-Anmeldung ist nicht verfügbar');
+      }
+      const step = matchingTotpStep(totpSecret, input.totp, this.now());
+      if (step === null || !(await this.deps.repo.consumeTotpStep(user.userId, step))) {
+        throw new AuthError(401, 'TOTP-Code ungültig oder bereits verwendet');
+      }
     }
 
     if (!(await this.deps.repo.registerDevice(user.tenantId, cert, input.device.certificate))) {

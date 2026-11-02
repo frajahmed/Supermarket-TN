@@ -19,7 +19,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 ---
 
 ## T-102 · Benutzerverwaltung und 2FA
-**Status:** offen · **Abhängig von:** –
+**Status:** zur Prüfung · **Abhängig von:** –
 
 - `GET/POST/PATCH /api/v1/users`: Inhaber verwaltet alle; Filialleiter nur `stock_clerk`/`cashier` in eigenen Filialen (siehe Berechtigungsmatrix im Architektur-Dokument).
 - Passwort setzen/zurücksetzen (min. 10 Zeichen), Kassen-PIN setzen (4–8 Ziffern). Hashing über `hashSecret()` aus `shared/license-core.ts`.
@@ -31,6 +31,12 @@ Abnahmekriterien:
 1. Filialleiter kann keinen Inhaber/Filialleiter anlegen und keine Nutzer fremder Filialen ändern (403, Test).
 2. TOTP: gültiger Code ±1 Zeitfenster akzeptiert, alter Code im selben Fenster nicht zweimal (Replay-Schutz), Test mit festen RFC-6238-Testvektoren.
 3. Deaktivierter Nutzer: nächstes `/auth/refresh` → 401 (Test).
+
+Umsetzung: Benutzer-CRUD mit `user.manage`/`user.manage.all`, Passwort- und PIN-Hashing,
+Filialzuordnung, verschlüsselte TOTP-Geheimnisse, RFC-6238-Login und atomarer Replay-Schutz
+über `db/006_user_management_2fa.sql`. TOTP-Geheimnisse werden nicht in Antworten ausgegeben.
+Neue Tests: `db/tests/006_user_management_2fa_test.sql`, `backend/test-core/totp.test.ts`
+und der T-102-NestJS-Integrationstest. Offene Fragen: keine.
 
 ## T-103 · Expo-App: Freischaltung, Anmeldung, Sprachen
 **Status:** offen · **Abhängig von:** T-102 (2FA-Feld im Login)

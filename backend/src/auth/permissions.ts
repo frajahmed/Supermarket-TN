@@ -5,7 +5,7 @@ import { UserRole } from './request-context';
  * Code prüft immer Rechte, nie Rollennamen. Die DB-Policies sind die zweite Linie.
  */
 export const PERMISSIONS = [
-  'tenant.settings', 'user.manage', 'report.finance', 'report.stock',
+  'tenant.settings', 'user.manage', 'user.manage.all', 'report.finance', 'report.stock',
   'product.write', 'price.update', 'stock.receive', 'stock.adjust', 'stock.read',
   'purchase.order', 'document.scan', 'sale.create', 'sale.void',
   'discount.approve', 'export.accounting', 'device.manage',

@@ -3,6 +3,7 @@ import { createPrivateKey, createPublicKey, generateKeyPairSync, type KeyObject 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { AuthFlow, ChallengeStore } from '../core/auth-flow.ts';
+import { deriveTotpKey } from '../core/totp.ts';
 import { LicensingService } from '../licensing/licensing.service';
 import { PgAuthRepo } from './pg-auth.repo';
 
@@ -25,6 +26,7 @@ function loadOrCreateJwtKey(path: string): { privateKey: KeyObject; publicKey: K
 export class AuthFlowProvider implements OnModuleInit {
   readonly challenges = new ChallengeStore(60);
   readonly jwt = loadOrCreateJwtKey(process.env.STORE_JWT_KEY_FILE ?? 'keys/store-jwt.key');
+  readonly totpKey = deriveTotpKey(this.jwt.privateKey);
   flow!: AuthFlow;
 
   constructor(private readonly repo: PgAuthRepo, private readonly licensing: LicensingService) {}
@@ -38,6 +40,7 @@ export class AuthFlowProvider implements OnModuleInit {
       licensePublicKey: this.licensing.licensePublicKey,
       installationId: this.licensing.installationId,
       jwtKey: this.jwt.privateKey,
+      totpKey: this.totpKey,
     });
   }
 }

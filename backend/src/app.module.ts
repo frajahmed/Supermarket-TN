@@ -12,6 +12,8 @@ import { OutboxWorker } from './realtime/outbox.worker';
 import { StockGateway } from './realtime/stock.gateway';
 import { ProductsController } from './products/products.controller';
 import { ProductsService } from './products/products.service';
+import { UsersController } from './users/users.controller';
+import { UsersService } from './users/users.service';
 
 @Controller('health')
 class HealthController {
@@ -22,7 +24,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, InventoryController, ProductsController],
+  controllers: [HealthController, AuthController, InventoryController, ProductsController, UsersController],
   providers: [
     DbService,
     LicensingService,
@@ -34,6 +36,7 @@ class HealthController {
     StockGateway,
     OutboxWorker,
     ProductsService,
+    UsersService,
   ],
 })
 export class AppModule {}

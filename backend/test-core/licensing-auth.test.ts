@@ -19,6 +19,7 @@ import { LicenseService } from '../../license-server/src/service.ts';
 import { AuthError, AuthFlow, ChallengeStore, type AuthRepo, type Role } from '../src/core/auth-flow.ts';
 import { JwtError, signJwt, verifyJwt } from '../src/core/jwt.ts';
 import { LicenseGate, syncLicense } from '../src/core/license-gate.ts';
+import { encryptTotpSecret, generateTotpCode } from '../src/core/totp.ts';
 
 // ---------- Lizenzserver ----------
 const licKeys = generateSigningKeys();
@@ -42,7 +43,7 @@ const TENANT = randomUUID();
 /** In-Memory-Nachbildung der auth.*-Funktionen aus Migration 004. */
 class MemoryRepo implements AuthRepo {
   users = new Map<string, { userId: string; tenantId: string; role: Role; passwordHash: string | null; pinHash: string | null;
-    isActive: boolean; lockedUntil: number | null; failed: number }>();
+    totpSecretEnc: Buffer | null; isActive: boolean; lockedUntil: number | null; failed: number; totpLastStep: number | null }>();
   devices = new Map<string, { revoked: boolean }>();
   tokens = new Map<string, { userId: string; deviceId: string; family: string; used: boolean; revoked: boolean; exp: number }>();
   async loginCandidate(email: string) {
@@ -78,6 +79,12 @@ class MemoryRepo implements AuthRepo {
   async revokeRefreshFamily(h: Buffer) {
     const t = this.tokens.get(h.toString('hex'));
     if (t) for (const x of this.tokens.values()) if (x.family === t.family) x.revoked = true;
+  }
+  async consumeTotpStep(userId: string, step: number) {
+    const u = [...this.users.values()].find((x) => x.userId === userId)!;
+    if (u.totpLastStep !== null && u.totpLastStep >= step) return false;
+    u.totpLastStep = step;
+    return true;
   }
 }
 const repo = new MemoryRepo();
@@ -131,12 +138,18 @@ before(async () => {
     { load: async () => savedLicense, save: async (t) => { savedLicense = t; } }, clock);
   await gate.init();
   flow = new AuthFlow({ repo, gate, challenges, licensePublicKey: licPub, installationId: inst.installationId,
-    jwtKey: jwtKeys.privateKey, clock });
+    jwtKey: jwtKeys.privateKey, totpKey: Buffer.alloc(32, 7), clock });
 
   repo.users.set('chef@g.tn', { userId: randomUUID(), tenantId: TENANT, role: 'owner',
-    passwordHash: await hashSecret('Chef-Passwort-2026'), pinHash: null, isActive: true, lockedUntil: null, failed: 0 });
+    passwordHash: await hashSecret('Chef-Passwort-2026'), pinHash: null, totpSecretEnc: null,
+    isActive: true, lockedUntil: null, failed: 0, totpLastStep: null });
   repo.users.set('caisse@g.tn', { userId: randomUUID(), tenantId: TENANT, role: 'cashier',
-    passwordHash: null, pinHash: await hashSecret('4711'), isActive: true, lockedUntil: null, failed: 0 });
+    passwordHash: null, pinHash: await hashSecret('4711'), totpSecretEnc: null,
+    isActive: true, lockedUntil: null, failed: 0, totpLastStep: null });
+  repo.users.set('totp@g.tn', { userId: randomUUID(), tenantId: TENANT, role: 'manager',
+    passwordHash: await hashSecret('Manager-Passwort-2026'), pinHash: null,
+    totpSecretEnc: encryptTotpSecret('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', Buffer.alloc(32, 7)),
+    isActive: true, lockedUntil: null, failed: 0, totpLastStep: null });
 });
 
 after(() => server.close());
@@ -200,6 +213,20 @@ test('Kassen-PIN: an der Kasse ja, am Handy nein, für Inhaber nie', async () =>
     (e: AuthError) => /nur an Kasse/.test(e.message));
   await assert.rejects(flow.login({ email: 'chef@g.tn', pin: '0000', device: kasse.proof() }),
     (e: AuthError) => /PIN-Anmeldung nur für Kasse und Lager/.test(e.message));
+});
+
+test('TOTP: RFC-6238-Code, Zeitfenster und Replay-Schutz', async () => {
+  const code = generateTotpCode('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', now);
+  const login = await flow.login({ email: 'totp@g.tn', password: 'Manager-Passwort-2026', totp: code, device: kasse.proof() });
+  assert.equal(login.user.role, 'manager');
+  await assert.rejects(
+    flow.login({ email: 'totp@g.tn', password: 'Manager-Passwort-2026', totp: code, device: kasse.proof() }),
+    (e: AuthError) => e.status === 401 && /TOTP/.test(e.message),
+  );
+  now += 30;
+  const next = generateTotpCode('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', now);
+  const nextLogin = await flow.login({ email: 'totp@g.tn', password: 'Manager-Passwort-2026', totp: next, device: kasse.proof() });
+  assert.equal(nextLogin.user.role, 'manager');
 });
 
 test('Falsches Passwort: generische Meldung, nach 5 Versuchen gesperrt', async () => {
