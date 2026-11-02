@@ -17,29 +17,10 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-004 | Login mit Gerätezertifikat, PIN, Refresh-Rotation (`db/004`, `backend/src/core`) | `backend/test-core/` (16), `db/tests/004_auth_test.sql` (A1–A6) |
 | T-101 | Produkt-API: Suche, Barcode/GTIN-Scan, Gebinde, Preisrecht, Audit (`db/005`) – PR #1 | `db/tests/005_product_barcode_test.sql` (P1–P4), NestJS-Integrationstests |
 | T-102 | Benutzerverwaltung, Filialrechte, TOTP-2FA mit Replay-Schutz (`db/006`) – PR #3 | `db/tests/006_…`, `backend/test-core/totp.test.ts`, NestJS-Integrationstest |
+| T-108 | 2FA-Fehlversuche zählen, 2FA-Selbsteinrichtung, letzter Inhaber geschützt, gemischte Filialen (`db/007`) – PR #5 | `db/tests/007_…` (O1–O7), Kern- und Integrationstests, Gleichzeitigkeitstest |
 | T-107 | Einkaufspreise nur mit `report.finance`, Literalsuche, Konfliktmeldungen, Audit beim Anlegen – PR #2 | NestJS-Integrationstest „T-107“ |
 
 ---
-
-## T-108 · Sicherheit Anmeldung und Benutzerverwaltung (aus Prüfung von T-102)
-**Status:** zur Prüfung (umgesetzt von Claude, Branch `agent/T-108-sicherheit`) · **Priorität:** hoch – vor jedem Kundeneinsatz
-
-1. **Falscher 2FA-Code zählt als Fehlversuch:** `recordLoginAttempt(false)` auch bei falschem oder wiederverwendetem TOTP-Code; Sperre greift wie beim Passwort.
-2. **2FA-Einrichtung durch den Nutzer selbst:**
-   - `POST /api/v1/me/2fa/setup` (angemeldet): Server erzeugt ein 160-Bit-Geheimnis, speichert es verschlüsselt als *ausstehend*, liefert es einmal als `otpauth://`-URI (für QR-Code) zurück.
-   - `POST /api/v1/me/2fa/confirm` mit gültigem Code: erst dann aktiv. Vorher wird beim Login kein Code verlangt.
-   - Inhaber kann 2FA eines Nutzers nur **zurücksetzen** (`totpSecret: null`), nicht setzen. Das Feld `totpSecret` mit Wert wird aus `POST/PATCH /users` entfernt.
-   - Migration `db/007_…` für die Spalte des ausstehenden Geheimnisses.
-3. **Letzter Inhaber geschützt:** Deaktivieren oder Herabstufen des letzten aktiven `owner` → 409 mit klarer Meldung (Prüfung in der Datenbank, nicht nur im Code, damit Gleichzeitigkeit sicher ist).
-4. **Gemischte Filialen:** Ein Filialleiter darf nur die Zuordnungen zu **seinen** Filialen ändern; Zuordnungen zu fremden Filialen bleiben erhalten. Deaktivieren eines Nutzers, der auch in fremden Filialen arbeitet, nur mit `user.manage.all`.
-5. **Dokumentation:** In `README.md` festhalten, dass `keys/store-jwt.key` auch die 2FA-Geheimnisse schützt und nicht getauscht werden darf (bzw. nur mit Umschlüsselung).
-
-Abnahmekriterien:
-1. Test: 5 falsche TOTP-Codes mit richtigem Passwort → Konto gesperrt (423).
-2. Test: Setup → Login verlangt noch keinen Code → Confirm mit falschem Code scheitert → Confirm mit richtigem Code → Login verlangt Code.
-3. Test: `POST /users` mit `totpSecret` → 400.
-4. Test: letzten Inhaber deaktivieren → 409; mit zweitem aktivem Inhaber → erlaubt.
-5. Test: Filialleiter entfernt eigene Filiale bei gemischtem Lageristen → fremde Zuordnung bleibt; Deaktivieren → 403.
 
 ## T-103 · Expo-App: Freischaltung, Anmeldung, Sprachen
 **Status:** zurück an Agent (PR #4, Branch `codex/T-103-app` weiterverwenden) · **Abhängig von:** T-102 (erledigt)
@@ -105,3 +86,4 @@ Abnahmekriterien:
 | 2026-11-02 | T-107 (PR #2) | erledigt | CI grün, alle 4 Kriterien erfüllt, Constraint-Name gegen DB verifiziert. Keine Befunde. |
 | 2026-11-02 | T-102 (PR #3) | erledigt (nachträglich geprüft) | Ohne vorherige Prüfung gemergt. CI grün, alle 3 Kriterien erfüllt. Befunde: 2FA ohne Fehlversuch-Zählung durchprobierbar, Einrichtung durch Ersteller, letzter Inhaber, gemischte Filialen → T-108. |
 | 2026-11-03 | T-103 (PR #4) | zurück an Agent | CI grün, aber nur Logik getestet. Blockierend: keine Zufallsquelle für Schlüsselerzeugung auf dem Gerät, RTL erst nach Neustart, App-Typprüfung fehlt in CI. Dazu i18n, Fehlerbehandlung, HTTPS. |
+| 2026-11-03 | T-108 (PR #5) | erledigt (von Claude umgesetzt) | CI 18/18 grün. Lücke bei gemischten Filialen (RLS verbirgt fremde Zuordnungen) während der Umsetzung durch CI gefunden und behoben. |
