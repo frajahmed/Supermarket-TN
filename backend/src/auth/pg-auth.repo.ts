@@ -10,12 +10,13 @@ export class PgAuthRepo implements AuthRepo {
 
   loginCandidate(email: string) {
     return this.db.system(async (c) => {
-      const r = await c.query('SELECT * FROM auth.login_candidate($1)', [email]);
+      const r = await c.query('SELECT * FROM auth.login_candidate_with_totp($1)', [email]);
       const u = r.rows[0];
       if (!u) return null;
       return {
         userId: u.user_id as string, tenantId: u.tenant_id as string, role: u.role as Role,
         passwordHash: u.password_hash as string | null, pinHash: u.pin_hash as string | null,
+        totpSecretEnc: u.totp_secret_enc ? Buffer.from(u.totp_secret_enc) : null,
         isActive: u.is_active as boolean,
         lockedUntil: u.locked_until ? Math.floor(new Date(u.locked_until).getTime() / 1000) : null,
       };
@@ -52,5 +53,13 @@ export class PgAuthRepo implements AuthRepo {
 
   async revokeRefreshFamily(tokenHash: Buffer) {
     await this.db.system((c) => c.query('SELECT auth.revoke_refresh_family($1)', [tokenHash]));
+  }
+
+  consumeTotpStep(userId: string, step: number) {
+    return this.db.system(async (c) => {
+      const r = await c.query<{ consume_totp_step: boolean }>(
+        'SELECT auth.consume_totp_step($1, $2) AS consume_totp_step', [userId, step]);
+      return r.rows[0]?.consume_totp_step === true;
+    });
   }
 }

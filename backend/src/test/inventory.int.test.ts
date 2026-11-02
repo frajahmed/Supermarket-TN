@@ -34,7 +34,8 @@ import { formatAmount, parseAmount, taxFromGross } from '../common/money';
 
 const T_A = randomUUID(), T_B = randomUUID();
 const STORE_A1 = randomUUID(), STORE_A2 = randomUUID(), STORE_B = randomUUID();
-const OWNER_A = randomUUID(), MANAGER_A = randomUUID(), CLERK_A = randomUUID(), CASHIER_A = randomUUID(), OWNER_B = randomUUID();
+const OWNER_A = randomUUID(), MANAGER_A = randomUUID(), CLERK_A = randomUUID(), CASHIER_A = randomUUID();
+const REMOTE_CLERK_A = randomUUID(), OWNER_B = randomUUID();
 const MILK = randomUUID(), FLOUR_B = randomUUID();
 
 let app: INestApplication;
@@ -108,15 +109,16 @@ before(async () => {
     [STORE_A1, STORE_A2, STORE_B, T_A, T_B]);
   await admin.query(
     `INSERT INTO app.users (id, tenant_id, email, display_name, role, password_hash, pin_hash) VALUES
-       ($1,$6,'owner@a.tn','O','owner',$8,NULL), ($2,$6,'clerk@a.tn','C','stock_clerk',NULL,NULL),
-       ($3,$6,'cash@a.tn','K','cashier',NULL,$9), ($4,$6,'manager@a.tn','M','manager',NULL,NULL),
-       ($5,$7,'owner@b.tn','OB','owner',NULL,NULL)`,
-    [OWNER_A, CLERK_A, CASHIER_A, MANAGER_A, OWNER_B, T_A, T_B,
+       ($1,$7,'owner@a.tn','O','owner',$9,NULL), ($2,$7,'clerk@a.tn','C','stock_clerk',NULL,NULL),
+       ($3,$7,'cash@a.tn','K','cashier',NULL,$10), ($4,$7,'manager@a.tn','M','manager',NULL,NULL),
+       ($5,$7,'remote-clerk@a.tn','R','stock_clerk',NULL,NULL),
+       ($6,$8,'owner@b.tn','OB','owner',NULL,NULL)`,
+    [OWNER_A, CLERK_A, CASHIER_A, MANAGER_A, REMOTE_CLERK_A, OWNER_B, T_A, T_B,
      await hashSecret('Chef-Passwort-2026'), await hashSecret('4711')]);
   await admin.query(
     `INSERT INTO app.user_store_access (tenant_id, user_id, store_id) VALUES
-       ($1,$2,$5), ($1,$3,$5), ($1,$4,$5)`,
-    [T_A, CLERK_A, CASHIER_A, MANAGER_A, STORE_A1]);
+       ($1,$2,$5), ($1,$3,$5), ($1,$4,$5), ($1,$6,$7)`,
+    [T_A, CLERK_A, CASHIER_A, MANAGER_A, STORE_A1, REMOTE_CLERK_A, STORE_A2]);
   await admin.query(
     `INSERT INTO app.products (id, tenant_id, sku, name, sale_price, min_stock) VALUES
        ($1,$3,'LAIT','{"fr":"Lait 1 L","ar":"حليب 1 لتر"}',1350,10), ($2,$4,'FARINE','{"fr":"Farine"}',900,5)`,
@@ -436,4 +438,68 @@ test('T-107: Einkaufspreise, Literalsuche, Gebinde-Konflikt und Erstellungs-Audi
   });
   assert.equal(clerkUpdate.status, 200);
   assert.equal(Object.hasOwn(clerkUpdate.body, 'purchasePrice'), false);
+});
+
+test('T-102: Benutzerverwaltung, Filialgrenze, TOTP und deaktivierter Refresh', async () => {
+  const noToken = await fetch(`${base}/api/v1/users`);
+  assert.equal(noToken.status, 401);
+
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+  const forbidden = await api('/users', cashier);
+  assert.equal(forbidden.status, 403);
+
+  const listed = await api('/users', owner);
+  assert.equal(listed.status, 200);
+  assert.ok(listed.body.items.some((item: { id: string }) => item.id === OWNER_A));
+  assert.equal(Object.hasOwn(listed.body.items[0], 'passwordHash'), false);
+  assert.equal(Object.hasOwn(listed.body.items[0], 'totpSecretEnc'), false);
+
+  const created = await api('/users', owner, {
+    method: 'POST',
+    body: JSON.stringify({
+      email: `manager-${randomUUID()}@a.tn`, displayName: 'Neuer Filialleiter', role: 'manager',
+      password: 'Neues-Passwort-2026', storeIds: [STORE_A1],
+      totpSecret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ',
+    }),
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.totpConfigured, true);
+
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const managerOwner = await api('/users', manager, {
+    method: 'POST',
+    body: JSON.stringify({
+      email: `owner-${randomUUID()}@a.tn`, displayName: 'Nicht erlaubt', role: 'owner',
+      password: 'Neues-Passwort-2026', storeIds: [STORE_A1],
+    }),
+  });
+  assert.equal(managerOwner.status, 403);
+
+  const foreignPatch = await api(`/users/${REMOTE_CLERK_A}`, manager, {
+    method: 'PATCH', body: JSON.stringify({ displayName: 'Nicht fremd ändern' }),
+  });
+  assert.equal(foreignPatch.status, 403);
+
+  const ownBranch = await api('/users', manager, {
+    method: 'POST',
+    body: JSON.stringify({
+      email: `cashier-${randomUUID()}@a.tn`, displayName: 'Neue Kasse', role: 'cashier',
+      pin: '1234', storeIds: [STORE_A1],
+    }),
+  });
+  assert.equal(ownBranch.status, 201);
+
+  const proof = async () => {
+    const challenge = await post('/auth/challenge', {});
+    return { certificate: deviceCert, challenge: challenge.body.challenge, signature: signChallenge(challenge.body.challenge, deviceKey) };
+  };
+  const login = await post('/auth/login', { email: 'cash@a.tn', pin: '4711', device: await proof() });
+  assert.equal(login.status, 200);
+  const disabled = await api(`/users/${CASHIER_A}`, owner, {
+    method: 'PATCH', body: JSON.stringify({ isActive: false }),
+  });
+  assert.equal(disabled.status, 200);
+  const refresh = await post('/auth/refresh', { refreshToken: login.body.refreshToken });
+  assert.equal(refresh.status, 401);
 });

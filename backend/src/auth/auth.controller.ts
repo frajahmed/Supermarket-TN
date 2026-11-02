@@ -16,6 +16,7 @@ const LoginBody = z.object({
   email: z.string().email().max(200),
   password: z.string().min(1).max(200).optional(),
   pin: z.string().regex(/^\d{4,8}$/).optional(),
+  totp: z.string().regex(/^\d{6}$/).optional(),
   device: DeviceProof,
 }).refine((b) => (b.password === undefined) !== (b.pin === undefined), 'Entweder Passwort oder PIN angeben');
 
