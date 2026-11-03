@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Ctx, RequirePermission } from '../auth/auth.guard';
 import { RequestContext } from '../auth/request-context';
 import { ZodPipe } from '../common/zod.pipe';
-import { CreditNoteCreate, DeliveryCreate, SalesOrderConfirm, SalesOrderCreate } from './sales.dto';
+import {
+  CreditNoteCreate, DeliveryCreate, InvoiceQuery, SalesOrderConfirm, SalesOrderCreate, SalesOrderQuery,
+} from './sales.dto';
 import { SalesService } from './sales.service';
 
 /** B2B-Verkauf: Auftrag -> Bestätigung -> Lieferung -> Rechnung -> Gutschrift (T-105). */
@@ -14,6 +16,24 @@ export class SalesController {
   @RequirePermission('sales.order')
   create(@Ctx() ctx: RequestContext, @Body(new ZodPipe(SalesOrderCreate)) body: SalesOrderCreate) {
     return this.sales.createOrder(ctx, body);
+  }
+
+  @Get('sales-orders')
+  @RequirePermission('sales.order')
+  list(@Ctx() ctx: RequestContext, @Query(new ZodPipe(SalesOrderQuery)) q: SalesOrderQuery) {
+    return this.sales.listOrders(ctx, q);
+  }
+
+  @Get('invoices')
+  @RequirePermission('sales.order')
+  invoices(@Ctx() ctx: RequestContext, @Query(new ZodPipe(InvoiceQuery)) q: InvoiceQuery) {
+    return this.sales.listInvoices(ctx, q);
+  }
+
+  @Get('invoices/:id')
+  @RequirePermission('sales.order')
+  invoiceDetail(@Ctx() ctx: RequestContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.sales.getInvoice(ctx, id);
   }
 
   @Get('sales-orders/:id')

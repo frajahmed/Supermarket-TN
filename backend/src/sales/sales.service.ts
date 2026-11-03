@@ -1,11 +1,13 @@
 import {
-  ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, UnprocessableEntityException,
+  BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, UnprocessableEntityException,
 } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { RequestContext } from '../auth/request-context';
 import { renderSalesDocument, type DocumentParty } from '../core/sales-document.ts';
 import { DbService } from '../db/db.service';
-import { CreditNoteCreate, DeliveryCreate, SalesOrderConfirm, SalesOrderCreate } from './sales.dto';
+import {
+  CreditNoteCreate, DeliveryCreate, InvoiceQuery, SalesOrderConfirm, SalesOrderCreate, SalesOrderQuery,
+} from './sales.dto';
 
 /**
  * Dünne Schicht über den SQL-Funktionen aus db/008_sales_flow.sql.
@@ -37,6 +39,60 @@ export class SalesService {
     return this.run(ctx, async (db) => {
       await db.query('SELECT app.confirm_sales_order($1, $2)', [id, b.overrideReason ?? null]);
       return this.loadOrder(db, id);
+    }).catch(async (e: unknown) => {
+      // Kreditlimit: Beträge strukturiert mitliefern, damit die App sie in jeder Sprache anzeigen kann
+      if (e instanceof ConflictException && (e.getResponse() as { code?: string }).code === 'CREDIT_LIMIT') {
+        const amounts = await this.db.withTenant(ctx, async (db) => (await db.query<{ open: string; order: string; limit: string }>(
+          `SELECT app.customer_open_balance(o.customer_id)::text AS open, app.sales_order_gross(o.id)::text AS "order",
+                  c.credit_limit::text AS "limit"
+             FROM app.sales_orders o JOIN app.customers c ON c.id = o.customer_id WHERE o.id = $1`, [id])).rows[0]);
+        throw new ConflictException({ ...(e.getResponse() as object), ...amounts, canOverride: ctx.role === 'owner' });
+      }
+      throw e;
+    });
+  }
+
+  /** Auftragsliste, neueste zuerst; Filter Status/Kunde/Filiale; Cursor über (created_at, id). */
+  listOrders(ctx: RequestContext, q: SalesOrderQuery) {
+    const c = decodeCursor(q.cursor);
+    return this.run(ctx, async (db) => {
+      const r = await db.query<{ id: string; createdAt: Date }>(
+        `SELECT o.id, o.number, o.status, o.store_id AS "storeId", o.customer_id AS "customerId", cu.name AS "customerName",
+                o.created_at AS "createdAt", o.requested_date::text AS "requestedDate",
+                app.sales_order_gross(o.id)::text AS "estimatedGross"
+           FROM app.sales_orders o JOIN app.customers cu ON cu.id = o.customer_id
+          WHERE ($1::app.order_status IS NULL OR o.status = $1)
+            AND ($2::uuid IS NULL OR o.customer_id = $2) AND ($3::uuid IS NULL OR o.store_id = $3)
+            AND ($4::timestamptz IS NULL OR (o.created_at, o.id) < ($4::timestamptz, $5::uuid))
+          ORDER BY o.created_at DESC, o.id DESC LIMIT $6`,
+        [q.status ?? null, q.customerId ?? null, q.storeId ?? null, c?.t ?? null, c?.id ?? null, q.limit + 1]);
+      return page(r.rows, q.limit, (x) => ({ t: x.createdAt.toISOString(), id: x.id }));
+    });
+  }
+
+  /** Ausgestellte Rechnungen und Gutschriften, neueste zuerst. */
+  listInvoices(ctx: RequestContext, q: InvoiceQuery) {
+    const c = decodeCursor(q.cursor);
+    return this.run(ctx, async (db) => {
+      const r = await db.query<{ id: string; createdAt: Date }>(
+        `SELECT i.id, i.number, i.status, i.is_credit_note AS "isCreditNote", i.customer_id AS "customerId",
+                cu.name AS "customerName", i.issue_date::text AS "issueDate", i.due_date::text AS "dueDate",
+                i.gross_total::text AS "grossTotal", i.created_at AS "createdAt"
+           FROM app.sales_invoices i JOIN app.customers cu ON cu.id = i.customer_id
+          WHERE i.status <> 'draft' AND ($1::app.invoice_status IS NULL OR i.status = $1)
+            AND ($2::uuid IS NULL OR i.customer_id = $2)
+            AND ($3::timestamptz IS NULL OR (i.created_at, i.id) < ($3::timestamptz, $4::uuid))
+          ORDER BY i.created_at DESC, i.id DESC LIMIT $5`,
+        [q.status ?? null, q.customerId ?? null, c?.t ?? null, c?.id ?? null, q.limit + 1]);
+      return page(r.rows, q.limit, (x) => ({ t: x.createdAt.toISOString(), id: x.id }));
+    });
+  }
+
+  getInvoice(ctx: RequestContext, id: string) {
+    return this.run(ctx, async (db) => {
+      const inv = await this.loadInvoiceSummary(db, id);
+      if (!inv) throw new NotFoundException('Rechnung nicht gefunden');
+      return inv;
     });
   }
 
@@ -138,15 +194,20 @@ export class SalesService {
   private async loadOrder(db: PoolClient, id: string) {
     const o = await db.query(
       `SELECT o.id, o.number, o.status, o.store_id AS "storeId", o.customer_id AS "customerId", o.currency,
+              (SELECT name FROM app.customers WHERE id = o.customer_id) AS "customerName",
               o.requested_date::text AS "requestedDate", o.note, o.confirmed_at AS "confirmedAt",
               o.credit_override_reason AS "creditOverrideReason", app.sales_order_gross(o.id)::text AS "estimatedGross"
          FROM app.sales_orders o WHERE o.id = $1`, [id]);
     if (!o.rows[0]) throw new NotFoundException('Auftrag nicht gefunden');
     const lines = await db.query(
-      `SELECT id, line_no AS "lineNo", product_id AS "productId", packaging_id AS "packagingId",
-              quantity::text AS quantity, quantity_delivered::text AS "quantityDelivered",
-              unit_price::text AS "unitPrice", discount_bp AS "discountBp", tax_rate_bp AS "taxRateBp"
-         FROM app.sales_order_lines WHERE sales_order_id = $1 ORDER BY line_no`, [id]);
+      `SELECT l.id, l.line_no AS "lineNo", l.product_id AS "productId", l.packaging_id AS "packagingId",
+              l.quantity::text AS quantity, l.quantity_delivered::text AS "quantityDelivered",
+              l.unit_price::text AS "unitPrice", l.discount_bp AS "discountBp", l.tax_rate_bp AS "taxRateBp",
+              p.sku, p.name AS "productName", p.unit, pp.name AS "packagingName", pp.factor::text AS "packagingFactor"
+         FROM app.sales_order_lines l
+         JOIN app.products p ON p.id = l.product_id
+         LEFT JOIN app.product_packagings pp ON pp.id = l.packaging_id
+        WHERE l.sales_order_id = $1 ORDER BY l.line_no`, [id]);
     const deliveries = await db.query(
       `SELECT id, number, invoice_id AS "invoiceId", delivered_at AS "deliveredAt"
          FROM app.sales_deliveries WHERE sales_order_id = $1 ORDER BY delivered_at`, [id]);
@@ -158,7 +219,8 @@ export class SalesService {
       `SELECT id, number, status, is_credit_note AS "isCreditNote", credit_note_for AS "creditNoteFor",
               issue_date::text AS "issueDate", due_date::text AS "dueDate", currency,
               net_total::text AS "netTotal", tax_total::text AS "taxTotal", stamp_duty::text AS "stampDuty",
-              gross_total::text AS "grossTotal", tax_breakdown AS "taxBreakdown"
+              gross_total::text AS "grossTotal", tax_breakdown AS "taxBreakdown", customer_id AS "customerId",
+              (SELECT name FROM app.customers c WHERE c.id = customer_id) AS "customerName"
          FROM app.sales_invoices WHERE id = $1`, [id]);
     return r.rows[0];
   }
@@ -192,4 +254,25 @@ function addressText(a: unknown): string | null {
 
 function snapshotParty(s: { name?: string; tax_id?: string | null; address?: unknown } | null): DocumentParty {
   return { name: s?.name ?? '', taxId: s?.tax_id ?? null, address: addressText(s?.address) };
+}
+
+function decodeCursor(v: string | undefined): { t: string; id: string } | undefined {
+  if (!v) return undefined;
+  try {
+    const c = JSON.parse(Buffer.from(v, 'base64url').toString('utf8')) as { t?: unknown; id?: unknown };
+    if (typeof c.t !== 'string' || Number.isNaN(Date.parse(c.t)) || typeof c.id !== 'string'
+      || !/^[0-9a-f-]{36}$/iu.test(c.id)) throw new Error('cursor');
+    return { t: c.t, id: c.id };
+  } catch {
+    throw new BadRequestException('Cursor ungültig');
+  }
+}
+
+function page<T extends { createdAt: Date }>(rows: T[], limit: number, key: (row: T) => { t: string; id: string }) {
+  const items = rows.slice(0, limit);
+  const last = items.at(-1);
+  return {
+    items,
+    nextCursor: rows.length > limit && last ? Buffer.from(JSON.stringify(key(last)), 'utf8').toString('base64url') : null,
+  };
 }
