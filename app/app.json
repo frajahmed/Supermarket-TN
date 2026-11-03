@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Supermarket TN",
+    "slug": "supermarket-tn",
+    "version": "0.1.0",
+    "scheme": "supermarket-tn",
+    "orientation": "default",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

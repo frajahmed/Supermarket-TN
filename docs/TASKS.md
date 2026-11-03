@@ -24,15 +24,10 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 ---
 
 ## T-103 · Expo-App: Freischaltung, Anmeldung, Sprachen
-**Status:** zurück an Agent (PR #4, Branch `codex/T-103-app` weiterverwenden) · **Abhängig von:** T-102 (erledigt)
+**Status:** zur Prüfung (Befunde von Claude behoben, PR #4) · **Abhängig von:** T-102 (erledigt)
 
-**Befunde aus der Prüfung (alle beheben, Details im Kommentar zu PR #4):**
-1. Blockierend: `tweetnacl` ohne Zufallsquelle → Schlüsselerzeugung wirft auf dem Gerät „no PRNG“. `expo-crypto` + `nacl.setPRNG(...)`, mit Test.
-2. Blockierend: `forceRTL` wirkt erst nach Reload → Sprache speichern, beim Start anwenden, nach Wechsel neu laden, Eingaben sichern.
-3. Blockierend: App-Typprüfung (`tsc -p app/tsconfig.json`) fehlt in `scripts/test-all.sh`/CI.
-4. Feste deutsche Texte → i18n-Schlüssel.
-5. Fehlerbehandlung in `startSetup()`, Polling nach Freigabe stoppen und zur Anmeldung wechseln.
-6. Server-Adresse nur `https://` (außer `__DEV__`).
+**Behobene Befunde:** 1. Seed aus `expo-crypto` + `nacl.setPRNG` · 2. Schreibrichtung über Layout-Stil `direction` (sofort, ohne Neustart, Eingaben bleiben) + gespeicherte Sprache · 3. App-Typprüfung in `scripts/test-all.sh`/CI · 4. alle Texte über i18n (Test prüft Schlüssel in ar/fr/en) · 5. Fehlerbehandlung, Polling stoppt und wechselt zur Anmeldung · 6. nur `https://` (außer `__DEV__`). Zusätzlich: Auswahl des Gerätetyps (Kassen-PIN nur an Kasse/Scanner/Tablet möglich).
+**Offen:** Test auf echtem Gerät (Expo Go) durch Ahmed.
 
 Neuer Ordner `app/` (Expo, TypeScript, expo-router):
 - **Erststart:** Schlüsselpaar Ed25519 erzeugen, privater Schlüssel in `expo-secure-store` (Hardware-gestützt, wo verfügbar). Kundenserver-Adresse per QR-Code oder Eingabe; Installations-ID kommt vom Kundenserver (`GET /api/v1/setup/info`, neuer öffentlicher Endpunkt).

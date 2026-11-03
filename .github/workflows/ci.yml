@@ -43,6 +43,10 @@ jobs:
         working-directory: backend
         run: if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
 
+      - name: Pakete Expo-App
+        working-directory: app
+        run: npm install --no-audit --no-fund
+
       - name: Gesamtprüfung
         run: bash scripts/test-all.sh
 
