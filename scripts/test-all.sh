@@ -94,6 +94,12 @@ if [ -n "$TSC" ]; then
   else
     record skip "Typprüfung Backend (NestJS)" "(npm install in backend/ fehlt)"
   fi
+  # App (Expo): Bildschirme und Laufzeitcode – die Logik-Tests allein prüfen das nicht
+  if [ -d app/node_modules/expo ] && [ -x app/node_modules/.bin/tsc ]; then
+    run_step "Typprüfung App (Expo)" app/node_modules/.bin/tsc -p app/tsconfig.json --noEmit
+  else
+    record skip "Typprüfung App (Expo)" "(npm install in app/ fehlt)"
+  fi
 else
   record skip "Typprüfung" "(tsc nicht gefunden – npm i -g typescript)"
 fi

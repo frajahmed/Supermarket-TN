@@ -1,29 +1,36 @@
+import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import nacl from 'tweetnacl';
-import { decodeBase64Url } from '../core/base64url';
-import { createChallengeProof, publicKeyToSpkiBase64 } from '../core/challenge';
-import { encodeBase64Url } from '../core/base64url';
+import { createChallengeProof } from '../core/challenge.ts';
 import {
-  AUTH_SESSION_KEY, DEVICE_CERTIFICATE_KEY, DeviceIdentity, loadOrCreateIdentity,
-  SERVER_URL_KEY, SecureStoreLike,
-} from '../core/identity';
+  AUTH_SESSION_KEY, DEVICE_CERTIFICATE_KEY, generateIdentity, loadOrCreateIdentity,
+  SERVER_URL_KEY, signingKey, type DeviceIdentity, type SecureStoreLike,
+} from '../core/identity.ts';
 
-const secureStore: SecureStoreLike = SecureStore;
+/**
+ * React Native/Hermes hat kein crypto.getRandomValues. tweetnacl würde ohne diese
+ * Zuweisung bei jeder Nutzung seines Zufallsgenerators "no PRNG" werfen.
+ * Schlüssel erzeugen wir zusätzlich ausdrücklich aus einem expo-crypto-Seed.
+ */
+nacl.setPRNG((target: Uint8Array, count: number) => {
+  target.set(Crypto.getRandomBytes(count));
+});
+
+export const secureStore: SecureStoreLike = SecureStore;
+const fromSeed = (seed: Uint8Array) => nacl.sign.keyPair.fromSeed(seed);
 
 export async function loadOrCreateDeviceIdentity(): Promise<DeviceIdentity> {
-  return loadOrCreateIdentity(secureStore, async () => {
-    const keyPair = nacl.sign.keyPair();
-    return {
-      publicKey: publicKeyToSpkiBase64(keyPair.publicKey),
-      privateKey: encodeBase64Url(keyPair.secretKey),
-    };
-  });
+  return loadOrCreateIdentity(secureStore, async () => generateIdentity((n) => Crypto.getRandomBytes(n), fromSeed));
 }
 
 export async function deviceProof(identity: DeviceIdentity, challenge: string) {
-  const secret = nacl.sign.keyPair.fromSecretKey(decodeBase64Url(identity.privateKey)).secretKey;
+  const secret = signingKey(identity, fromSeed);
   const proof = await createChallengeProof(challenge, async (message) => nacl.sign.detached(message, secret));
   return { certificate: (await secureStore.getItemAsync(DEVICE_CERTIFICATE_KEY)) ?? '', ...proof };
+}
+
+export async function hasDeviceCertificate(): Promise<boolean> {
+  return Boolean(await secureStore.getItemAsync(DEVICE_CERTIFICATE_KEY));
 }
 
 export async function saveDeviceCertificate(certificate: string): Promise<void> {

@@ -27,8 +27,20 @@ function url(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/$/u, '')}${path}`;
 }
 
+/** Fehler mit HTTP-Status und Servermeldung, damit Bildschirme passend reagieren können (401, 423 …). */
+export class ServerError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function json<T>(response: Response): Promise<T> {
-  if (!response.ok) throw new Error('Serveranfrage fehlgeschlagen');
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { message?: unknown };
+    throw new ServerError(response.status, typeof body.message === 'string' ? body.message : `HTTP ${response.status}`);
+  }
   return response.json() as Promise<T>;
 }
 
@@ -45,10 +57,11 @@ export class CustomerServerClient {
 
   async requestActivation(
     licenseServerUrl: string, installationId: string, identity: DeviceIdentity, name: string,
+    kind: 'phone' | 'scanner' | 'tablet' | 'pos' = 'phone',
   ): Promise<ActivationRequest> {
     return json<ActivationRequest>(await this.fetchImpl(url(licenseServerUrl, '/v1/activation-requests'), {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ installationId, name, kind: 'phone', publicKey: identity.publicKey }),
+      body: JSON.stringify({ installationId, name, kind, publicKey: identity.publicKey }),
     }));
   }
 

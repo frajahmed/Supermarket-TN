@@ -1,16 +1,14 @@
 import i18n from 'i18next';
-import { I18nManager } from 'react-native';
 import { initReactI18next } from 'react-i18next';
-import { AppLanguage, directionForLanguage } from '../core/language';
+import { DEFAULT_LANGUAGE, type AppLanguage } from '../core/language.ts';
 import { resources } from './translations';
 
-void i18n.use(initReactI18next).init({ resources, lng: 'fr', fallbackLng: 'en', interpolation: { escapeValue: false } });
+void i18n.use(initReactI18next).init({
+  resources, lng: DEFAULT_LANGUAGE, fallbackLng: 'fr', interpolation: { escapeValue: false },
+});
 
-export async function changeAppLanguage(language: AppLanguage): Promise<void> {
+export async function applyLanguage(language: AppLanguage): Promise<void> {
   await i18n.changeLanguage(language);
-  const rtl = directionForLanguage(language) === 'rtl';
-  I18nManager.allowRTL(rtl);
-  I18nManager.forceRTL(rtl);
 }
 
 export { i18n };
