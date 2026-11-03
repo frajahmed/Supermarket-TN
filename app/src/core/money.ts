@@ -7,3 +7,8 @@ export function formatTndMinor(minorUnits: string, locale: string): string {
   const decimal = new Intl.NumberFormat(locale).formatToParts(1.1).find((part) => part.type === 'decimal')?.value ?? ',';
   return `${integer}${decimal}${fraction}`;
 }
+
+/** Vorzeichenbehafteter Betrag (Saldo kann durch Gutschriften negativ sein). */
+export function formatSignedTndMinor(minorUnits: string, locale: string): string {
+  return minorUnits.startsWith('-') ? `-${formatTndMinor(minorUnits.slice(1), locale)}` : formatTndMinor(minorUnits, locale);
+}
