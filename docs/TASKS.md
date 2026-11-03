@@ -5,7 +5,7 @@ CI auf GitHub (`.github/workflows/ci.yml`) führt bei jedem Push `scripts/test-a
 Status: `offen` → `in Arbeit (Agent)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Agent` (mit Befund).
 Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Definition of Done: siehe `AGENTS.md`.
 
-**Nächste Aufgabe:** T-113, danach in Reihenfolge T-114 bis T-116. T-117 (Gerätetest) läuft parallel bei Ahmed.
+**Nächste Aufgabe:** T-114, danach T-115 und T-116. T-117 (Gerätetest) läuft parallel bei Ahmed.
 
 ## Erledigt
 
@@ -24,6 +24,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-110 | Produkte in der App: Bestandsliste je Filiale (`GET /stores/:id/stock`), Detail mit Chargen/Gebinden, Kamera-Scan, Anlegen/Ändern – PR #8 | `app/test/products.test.ts` (7 Tests), NestJS-Integrationstest „T-110“ |
 | T-111 | Kunden: API (Matricule fiscal Pflicht, Nummer automatisch, Saldo/Limit, Audit) und App (Liste, Detail, Anlegen/Ändern) – PR #9 | `app/test/customers.test.ts` (6 Tests), NestJS-Integrationstest „T-111“ |
 | T-112 | Aufträge in der App: Erfassung per Scan, Bestätigen mit Kreditlimit (Übersteuern nur Inhaber), Kommissionierung/Teillieferung, Rechnung, Drucken/PDF teilen; Auftrags- und Rechnungslisten – PR #10 | `app/test/orders.test.ts` (9 Tests), NestJS-Integrationstest „T-112“; Arabisch im PDF: Gerätetest T-117 |
+| T-113 | Lager in der App: Wareneingang (Gebinde, MHD, Charge – Charge legt der Server an), Inventur je Regal mit Differenzbuchung, Verlust mit Pflicht-Begründung, Warnungen – PR #11 | `app/test/warehouse.test.ts` (4 Tests), NestJS-Integrationstest „T-113“ |
 | T-107 | Einkaufspreise nur mit `report.finance`, Literalsuche, Konfliktmeldungen, Audit beim Anlegen – PR #2 | NestJS-Integrationstest „T-107“ |
 
 ---
@@ -82,7 +83,7 @@ Abnahmekriterien:
 3. Gerätetest: PDF der Rechnung zeigt Arabisch korrekt verbunden.
 
 ## T-113 · Lager: Wareneingang, Inventur, Verlust
-**Status:** offen · **Abhängig von:** T-110
+**Status:** erledigt (PR #11) · **Abhängig von:** T-110
 
 - App: Wareneingang per Scan (Menge, MHD, Charge), Inventur (Zählliste je Regal, Differenzbuchung), Verlust mit Pflicht-Begründung – über `/sync/push`.
 - MHD-/Mindestbestand-Warnungen aus `/stores/:id/stock-alerts` als Liste.
@@ -154,6 +155,7 @@ Abnahmekriterien:
 | 2026-11-03 | T-110 (PR #8) | erledigt (von Claude umgesetzt) | CI fand: fremde Filiale lieferte für Mandant B eine Liste mit Bestand 0 → jetzt 404. Neu: gemeinsame Sitzung (`src/device/session.ts`), Lizenzbanner auf jeder Seite. Kamera nur auf echtem Gerät prüfbar (T-117). |
 | 2026-11-03 | T-111 (PR #9) | erledigt (von Claude umgesetzt) | Lesen mit `sales.order` (Lagerist), Schreiben mit `customer.manage`, Kassierer 403. Kundengruppen/Preislisten nur anzeigen; Pflege folgt im Backoffice. |
 | 2026-11-03 | T-112 (PR #10) | erledigt (von Claude umgesetzt) | Wiederholte Sendung nutzt dieselbe clientOpId nur bei gleichem Inhalt (sonst würde der Server still den alten Vorgang liefern). Entwürfe können noch nicht storniert/geändert werden; Gutschrift nur über API → später Backoffice. |
+| 2026-11-03 | T-113 (PR #11) | erledigt (von Claude umgesetzt) | Inventur rechnet gegen den Bestand beim Laden der Liste (Hinweis: außerhalb der Öffnungszeiten zählen); Zählliste max. 100 Positionen je Laden → Regal-Filter nutzen. Einstandspreis beim Wareneingang folgt mit dem Belegleser. |
 | 2026-11-03 | T-108 (PR #5) | erledigt (von Claude umgesetzt) | CI 18/18 grün. Lücke bei gemischten Filialen (RLS verbirgt fremde Zuordnungen) während der Umsetzung durch CI gefunden und behoben. |
 | 2026-11-03 | T-105 (PR #6) | erledigt (von Claude umgesetzt) | CI 19/19 grün beim ersten Lauf. Dokumente als HTML statt PDF (Arabisch), begründet in PR. |
 | 2026-11-03 | T-103 (PR #4) | erledigt (Befunde von Claude behoben) | CI 21/21 inkl. App-Typprüfung. Gerätetest offen (T-117). App-Plan T-109–T-117 angelegt. |
