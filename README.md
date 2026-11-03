@@ -70,6 +70,20 @@ export ADMIN_DATABASE_URL=postgres://postgres@localhost/warenwirtschaft
 npm run test:integration
 ```
 
+## Wichtige Schlüssel auf dem Kundenserver
+
+| Datei | Schützt | Darf getauscht werden? |
+| --- | --- | --- |
+| `keys/store-jwt.key` | Anmelde-Tokens **und** (abgeleitet) alle 2FA-Geheimnisse der Nutzer | **Nein.** Ein neuer Schlüssel macht alle eingerichteten 2FA unlesbar – betroffene Nutzer müssen 2FA vom Inhaber zurücksetzen lassen und neu einrichten. In die verschlüsselte Datensicherung aufnehmen. |
+| `keys/license.pub` | Prüfung von Lizenz und Gerätezertifikaten | Nur zusammen mit einem neuen Schlüssel des Lizenzservers |
+
+## 2FA (Inhaber und Filialleiter)
+
+1. Angemeldeter Nutzer ruft `POST /api/v1/me/2fa/setup` auf und scannt den QR-Code (`otpauthUri`) mit einer Authenticator-App.
+2. `POST /api/v1/me/2fa/confirm` mit dem angezeigten Code – erst dann ist 2FA aktiv (Einrichtung verfällt nach 15 Minuten).
+3. Ab dann verlangt jede Anmeldung den Code. Falsche Codes zählen als Fehlversuch (Sperre nach 5).
+4. Handy verloren: Inhaber setzt mit `PATCH /api/v1/users/:id` und `{"totpSecret": null}` zurück; der Nutzer richtet neu ein.
+
 ## Ablauf Geräte-Freischaltung
 
 1. App auf neuem Gerät erzeugt ein Schlüsselpaar (privater Schlüssel bleibt im Gerät) und schickt eine Anfrage an den Lizenzserver.

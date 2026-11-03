@@ -53,7 +53,7 @@ cd "$ROOT"
 # Angewendete Migrationen dürfen sich nie ändern (Prüfsummen von Claude gepflegt)
 if [ -f scripts/migration-checksums.txt ]; then
   if sha256sum --quiet -c scripts/migration-checksums.txt >/dev/null 2>&1; then
-    record ok "Migrationen 001–004 unverändert"
+    record ok "Angewendete Migrationen unverändert"
   else
     record fail "Angewendete Migration wurde verändert" "(neue Datei db/NNN_… anlegen statt ändern)"
   fi
@@ -108,7 +108,9 @@ node_tests() {  # node_tests <name> <dir> <glob>
   pass=$(echo "$out" | sed -n 's/^[#ℹ] pass \([0-9]*\)/\1/p' | tail -1)
   fail=$(echo "$out" | sed -n 's/^[#ℹ] fail \([0-9]*\)/\1/p' | tail -1)
   if [ "${fail:-1}" = "0" ] && [ "${pass:-0}" -gt 0 ]; then record ok "$1 ($pass Tests)"
-  else record fail "$1" "(bestanden ${pass:-0}, fehlgeschlagen ${fail:-?})"; echo "$out" | grep -E '^not ok|AssertionError|Error' | head -20; fi
+  else record fail "$1" "(bestanden ${pass:-0}, fehlgeschlagen ${fail:-?})"
+    # Details je fehlgeschlagenem Test: Meldung, erwartet/tatsächlich, Stelle im Code
+    echo "$out" | awk '/^not ok/{show=1; n=0} show{print; n++} /^ok /{show=0} n>45{show=0}' | head -120; fi
 }
 node_tests "Lizenzserver-Tests" license-server "test/**/*.test.ts"
 node_tests "Lizenz- und Login-Tests (Kern)" backend "test-core/**/*.test.ts"

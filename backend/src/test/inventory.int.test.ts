@@ -29,6 +29,7 @@ import { openDatabase } from '../../../license-server/src/db.ts';
 import { createLicenseServer } from '../../../license-server/src/http.ts';
 import { LicenseService } from '../../../license-server/src/service.ts';
 import { signJwt } from '../core/jwt.ts';
+import { generateTotpCode } from '../core/totp.ts';
 import { AppModule } from '../app.module';
 import { formatAmount, parseAmount, taxFromGross } from '../common/money';
 
@@ -470,11 +471,10 @@ test('T-102: Benutzerverwaltung, Filialgrenze, TOTP und deaktivierter Refresh', 
     body: JSON.stringify({
       email: `manager-${randomUUID()}@a.tn`, displayName: 'Neuer Filialleiter', role: 'manager',
       password: 'Neues-Passwort-2026', storeIds: [STORE_A1],
-      totpSecret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ',
     }),
   });
   assert.equal(created.status, 201);
-  assert.equal(created.body.totpConfigured, true);
+  assert.equal(created.body.totpConfigured, false, '2FA richtet der Nutzer selbst ein (T-108)');
 
   const manager = await token(MANAGER_A, T_A, 'manager');
   const managerOwner = await api('/users', manager, {
@@ -512,4 +512,196 @@ test('T-102: Benutzerverwaltung, Filialgrenze, TOTP und deaktivierter Refresh', 
   assert.equal(disabled.status, 200);
   const refresh = await post('/auth/refresh', { refreshToken: login.body.refreshToken });
   assert.equal(refresh.status, 401);
+});
+
+test('T-108: 2FA-Selbsteinrichtung, Fehlversuche, letzter Inhaber, gemischte Filialen', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const proof = async () => {
+    const challenge = await post('/auth/challenge', {});
+    return { certificate: deviceCert, challenge: challenge.body.challenge, signature: signChallenge(challenge.body.challenge, deviceKey) };
+  };
+
+  // Kriterium 3: Geheimnis kann nicht mehr vom Ersteller gesetzt werden
+  const withSecret = await api('/users', owner, {
+    method: 'POST',
+    body: JSON.stringify({ email: `x-${randomUUID()}@a.tn`, displayName: 'X', role: 'manager',
+      password: 'Neues-Passwort-2026', storeIds: [STORE_A1], totpSecret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ' }),
+  });
+  assert.equal(withSecret.status, 400);
+
+  const email = `m2fa-${randomUUID()}@a.tn`;
+  const created = await api('/users', owner, {
+    method: 'POST',
+    body: JSON.stringify({ email, displayName: 'Filialleiter 2FA', role: 'manager', password: 'M2fa-Passwort-2026', storeIds: [STORE_A1] }),
+  });
+  assert.equal(created.status, 201);
+  const managerId = created.body.id as string;
+  const patchSecret = await api(`/users/${managerId}`, owner, {
+    method: 'PATCH', body: JSON.stringify({ totpSecret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ' }),
+  });
+  assert.equal(patchSecret.status, 400, 'Setzen per PATCH verboten, nur Zurücksetzen (null)');
+
+  // Kriterium 2: Setup -> noch kein Code nötig -> falscher Code scheitert -> richtiger Code aktiviert
+  const me = await token(managerId, T_A, 'manager');
+  const setup = await api('/me/2fa/setup', me, { method: 'POST' });
+  assert.equal(setup.status, 200);
+  assert.match(setup.body.secret, /^[A-Z2-7]{32}$/);
+  assert.match(setup.body.otpauthUri, /^otpauth:\/\/totp\//);
+  const pendingLogin = await post('/auth/login', { email, password: 'M2fa-Passwort-2026', device: await proof() });
+  assert.equal(pendingLogin.status, 200, 'ausstehende Einrichtung verlangt noch keinen Code');
+
+  const now = Math.floor(Date.now() / 1000);
+  const good = generateTotpCode(setup.body.secret, now);
+  const bad = good === '000000' ? '111111' : '000000';
+  assert.equal((await api('/me/2fa/confirm', me, { method: 'POST', body: JSON.stringify({ code: bad }) })).status, 400);
+  const confirmed = await api('/me/2fa/confirm', me, { method: 'POST', body: JSON.stringify({ code: good }) });
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.body.totpConfigured, true);
+
+  const noCode = await post('/auth/login', { email, password: 'M2fa-Passwort-2026', device: await proof() });
+  assert.equal(noCode.status, 401);
+  assert.match(String(noCode.body.message), /TOTP-Code erforderlich/);
+  const withCode = await post('/auth/login', {
+    email, password: 'M2fa-Passwort-2026', totp: generateTotpCode(setup.body.secret, now + 30), device: await proof(),
+  });
+  assert.equal(withCode.status, 200);
+
+  const cashierSetup = await api('/me/2fa/setup', await token(CLERK_A, T_A, 'stock_clerk'), { method: 'POST' });
+  assert.equal(cashierSetup.status, 403);
+
+  // Kriterium 1 über HTTP: 5 falsche Codes -> gesperrt, auch mit richtigem Code
+  for (let i = 0; i < 5; i++) {
+    const r = await post('/auth/login', { email, password: 'M2fa-Passwort-2026', totp: bad, device: await proof() });
+    assert.equal(r.status, 401);
+  }
+  const locked = await post('/auth/login', {
+    email, password: 'M2fa-Passwort-2026', totp: generateTotpCode(setup.body.secret, now + 60), device: await proof(),
+  });
+  assert.equal(locked.status, 423);
+
+  // Inhaber setzt 2FA zurück
+  const reset = await api(`/users/${managerId}`, owner, { method: 'PATCH', body: JSON.stringify({ totpSecret: null }) });
+  assert.equal(reset.status, 200);
+  assert.equal(reset.body.totpConfigured, false);
+
+  // Kriterium 4: letzter Inhaber
+  const selfDeactivate = await api(`/users/${OWNER_A}`, owner, { method: 'PATCH', body: JSON.stringify({ isActive: false }) });
+  assert.equal(selfDeactivate.status, 409);
+  const selfDemote = await api(`/users/${OWNER_A}`, owner, { method: 'PATCH', body: JSON.stringify({ role: 'manager' }) });
+  assert.equal(selfDemote.status, 409);
+  const second = await api('/users', owner, {
+    method: 'POST',
+    body: JSON.stringify({ email: `owner2-${randomUUID()}@a.tn`, displayName: 'Zweiter Inhaber', role: 'owner', password: 'Owner2-Passwort-2026' }),
+  });
+  assert.equal(second.status, 201);
+  const deactivateSecond = await api(`/users/${second.body.id}`, owner, { method: 'PATCH', body: JSON.stringify({ isActive: false }) });
+  assert.equal(deactivateSecond.status, 200, 'mit zweitem aktivem Inhaber erlaubt');
+
+  // Kriterium 5: gemischter Lagerist (Filiale A1 des Filialleiters + fremde Filiale A2)
+  const mixed = await api('/users', owner, {
+    method: 'POST',
+    body: JSON.stringify({ email: `mixed-${randomUUID()}@a.tn`, displayName: 'Gemischt', role: 'stock_clerk', pin: '2468', storeIds: [STORE_A1, STORE_A2] }),
+  });
+  assert.equal(mixed.status, 201);
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const rename = await api(`/users/${mixed.body.id}`, manager, { method: 'PATCH', body: JSON.stringify({ displayName: 'Gemischt 2' }) });
+  assert.equal(rename.status, 200, 'Filialleiter darf gemischten Nutzer bearbeiten');
+  assert.deepEqual(rename.body.storeIds, [STORE_A1], 'fremde Filiale bleibt für den Filialleiter unsichtbar');
+  const deactivateMixed = await api(`/users/${mixed.body.id}`, manager, { method: 'PATCH', body: JSON.stringify({ isActive: false }) });
+  assert.equal(deactivateMixed.status, 403);
+  const removeOwn = await api(`/users/${mixed.body.id}`, manager, { method: 'PATCH', body: JSON.stringify({ storeIds: [] }) });
+  assert.equal(removeOwn.status, 200);
+  const afterRemove = await admin.query<{ store_id: string }>(
+    'SELECT store_id FROM app.user_store_access WHERE user_id = $1', [mixed.body.id]);
+  assert.deepEqual(afterRemove.rows.map((r) => r.store_id), [STORE_A2], 'fremde Filiale bleibt erhalten');
+});
+
+test('T-105: Auftrag -> Kreditlimit bei Bestätigung -> Teillieferung -> Rechnung -> Dokument -> Gutschrift', async () => {
+  const CUSTOMER = randomUUID();
+  await admin.query(
+    `INSERT INTO app.customers (id, tenant_id, number, name, tax_id, payment_terms_days, credit_limit, preferred_locale)
+     VALUES ($1, $2, $3, 'Épicerie Test', '3333333C/A/000', 30, 10000, 'fr-TN')`,
+    [CUSTOMER, T_A, `K-${CUSTOMER.slice(0, 8)}`]);
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const clerk = await token(CLERK_A, T_A, 'stock_clerk');
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+
+  const orderBody = { storeId: STORE_A1, customerId: CUSTOMER, lines: [{ productId: MILK, quantity: '10' }], clientOpId: randomUUID() };
+  assert.equal((await api('/sales-orders', cashier, { method: 'POST', body: JSON.stringify(orderBody) })).status, 403);
+  const order = await api('/sales-orders', clerk, { method: 'POST', body: JSON.stringify(orderBody) });
+  assert.equal(order.status, 201);
+  assert.match(order.body.number, /^SO-\d{4}-\d{6}$/);
+  const again = await api('/sales-orders', clerk, { method: 'POST', body: JSON.stringify(orderBody) });
+  assert.equal(again.body.id, order.body.id, 'doppelt gesendeter Auftrag = ein Auftrag');
+  // 10 × 1,350 = 13,500 + 19 % 2,565 + Timbre 1,000 = 17,065 > Limit 10,000
+  assert.equal(order.body.estimatedGross, '17065');
+
+  // Kriterium 1: Kreditlimit blockiert die Bestätigung
+  const blocked = await api(`/sales-orders/${order.body.id}/confirm`, clerk, { method: 'POST', body: '{}' });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.code, 'CREDIT_LIMIT');
+  const managerOverride = await api(`/sales-orders/${order.body.id}/confirm`, manager, {
+    method: 'POST', body: JSON.stringify({ overrideReason: 'Stammkunde' }) });
+  assert.equal(managerOverride.status, 403, 'nur der Inhaber darf übersteuern');
+  const ownerOverride = await api(`/sales-orders/${order.body.id}/confirm`, owner, {
+    method: 'POST', body: JSON.stringify({ overrideReason: 'Zahlung zugesagt' }) });
+  assert.equal(ownerOverride.status, 200);
+  assert.equal(ownerOverride.body.status, 'confirmed');
+  const audit = await admin.query(`SELECT after FROM app.audit_log WHERE action = 'credit.override' AND entity_id = $1`, [order.body.id]);
+  assert.equal(audit.rows[0].after.reason, 'Zahlung zugesagt');
+
+  // Teillieferung 4 von 10
+  const lineId = ownerOverride.body.lines[0].id as string;
+  const deliveryBody = { clientOpId: randomUUID(), lines: [{ orderLineId: lineId, quantity: '4' }] };
+  const delivery = await api(`/sales-orders/${order.body.id}/deliveries`, clerk, { method: 'POST', body: JSON.stringify(deliveryBody) });
+  assert.equal(delivery.status, 201);
+  assert.match(delivery.body.number, /^BL-\d{4}-\d{6}$/);
+  const replay = await api(`/sales-orders/${order.body.id}/deliveries`, clerk, { method: 'POST', body: JSON.stringify(deliveryBody) });
+  assert.equal(replay.body.id, delivery.body.id, 'erneut gesendete Lieferung bucht nicht doppelt');
+  const over = await api(`/sales-orders/${order.body.id}/deliveries`, clerk, {
+    method: 'POST', body: JSON.stringify({ clientOpId: randomUUID(), lines: [{ orderLineId: lineId, quantity: '7' }] }) });
+  assert.equal(over.status, 422);
+  const moves = await admin.query(`SELECT sum(quantity_delta)::text AS q FROM app.stock_movements WHERE ref_type = 'sales_order' AND ref_id = $1`, [order.body.id]);
+  assert.equal(moves.rows[0].q, '-4.000', 'Lager um genau 4 reduziert');
+
+  // Kriterium 2: Rechnung nur über die gelieferte Menge
+  assert.equal((await api(`/deliveries/${delivery.body.id}/invoice`, clerk, { method: 'POST' })).status, 403);
+  const invoice = await api(`/deliveries/${delivery.body.id}/invoice`, manager, { method: 'POST' });
+  assert.equal(invoice.status, 201);
+  // 4 × 1,350 = 5,400 + 19 % 1,026 + Timbre 1,000 = 7,426
+  assert.deepEqual([invoice.body.netTotal, invoice.body.taxTotal, invoice.body.stampDuty, invoice.body.grossTotal],
+    ['5400', '1026', '1000', '7426']);
+
+  // Kriterium 3: Summen im Dokument = Summen in sales_invoices (Kassierer darf drucken)
+  const docRes = await fetch(`${base}/api/v1/invoices/${invoice.body.id}/document`, { headers: { authorization: `Bearer ${cashier}` } });
+  assert.equal(docRes.status, 200);
+  assert.match(docRes.headers.get('content-type') ?? '', /text\/html/);
+  const html = await docRes.text();
+  const db = (await admin.query(
+    `SELECT net_total::text AS net, tax_total::text AS tax, stamp_duty::text AS stamp, gross_total::text AS gross, number
+       FROM app.sales_invoices WHERE id = $1`, [invoice.body.id])).rows[0];
+  const attr = (name: string) => html.match(new RegExp(`${name}="([^"]*)"`))?.[1];
+  assert.deepEqual([attr('data-total-net'), attr('data-total-tax'), attr('data-total-stamp'), attr('data-total-gross')],
+    [db.net, db.tax, db.stamp, db.gross]);
+  assert.ok(html.includes(db.number) && html.includes('فاتورة') && html.includes('3333333C/A/000'));
+
+  const delDoc = await fetch(`${base}/api/v1/deliveries/${delivery.body.id}/document`, { headers: { authorization: `Bearer ${clerk}` } });
+  const delHtml = await delDoc.text();
+  assert.equal(delDoc.status, 200);
+  assert.ok(delHtml.includes('Bon de livraison') && delHtml.includes(delivery.body.number));
+  assert.equal(delHtml.includes('data-total-gross'), false, 'Lieferschein ohne Preise');
+
+  // Gutschrift mit Bezug
+  const credit = await api(`/invoices/${invoice.body.id}/credit-note`, manager, { method: 'POST', body: JSON.stringify({ reason: 'Ware beschädigt' }) });
+  assert.equal(credit.status, 201);
+  assert.match(credit.body.number, /^AV-\d{4}-\d{6}$/);
+  assert.equal(credit.body.creditNoteFor, invoice.body.id);
+  const second = await api(`/invoices/${invoice.body.id}/credit-note`, manager, { method: 'POST', body: JSON.stringify({ reason: 'nochmal' }) });
+  assert.equal(second.status, 422);
+
+  // Anderer Mandant
+  const foreign = await fetch(`${base}/api/v1/invoices/${invoice.body.id}/document`, {
+    headers: { authorization: `Bearer ${await token(OWNER_B, T_B, 'owner')}` } });
+  assert.equal(foreign.status, 404);
 });
