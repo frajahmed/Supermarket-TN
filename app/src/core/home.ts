@@ -27,7 +27,7 @@ const TILE_RULES: ReadonlyArray<[HomeTile, (p: ReadonlySet<string>) => boolean]>
 
 /** Ziel einer Kachel; null = Bereich noch im Bau (Platzhalter). */
 export function tileRoute(tile: HomeTile): string | null {
-  const routes: Partial<Record<HomeTile, string>> = { products: '/products', customers: '/customers' };
+  const routes: Partial<Record<HomeTile, string>> = { products: '/products', customers: '/customers', orders: '/orders' };
   return routes[tile] ?? null;
 }
 

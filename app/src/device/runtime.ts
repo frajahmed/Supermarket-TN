@@ -97,3 +97,8 @@ export async function saveServerUrl(serverUrl: string): Promise<void> {
 export async function loadServerUrl(): Promise<string | null> {
   return secureStore.getItemAsync(SERVER_URL_KEY);
 }
+
+/** Neue clientOpId (UUID v4 aus expo-crypto) für idempotente Aktionen. */
+export function newOpId(): string {
+  return Crypto.randomUUID();
+}

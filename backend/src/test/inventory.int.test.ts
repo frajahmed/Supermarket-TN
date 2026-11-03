@@ -849,3 +849,69 @@ test('T-111: Kunden – Matricule fiscal, Rechte je Rolle, Saldo/Limit, Suche, A
   assert.ok(withInvoices.body.recentOrders.length >= 1);
   assert.match(withInvoices.body.customer.openBalance, /^-?\d+$/u);
 });
+
+test('T-112: Auftragsliste, Kreditlimit mit Beträgen, doppelte Lieferung bucht einmal, Rechnungsliste', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+  const cust = await api('/customers', manager, {
+    method: 'POST', body: JSON.stringify({ name: `T112 ${randomUUID().slice(0, 6)}`, taxId: '7777777A', creditLimit: '1000' }) });
+  assert.equal(cust.status, 201);
+  const customerId = cust.body.id as string;
+
+  const opId = randomUUID();
+  const body = JSON.stringify({ storeId: STORE_A1, customerId, lines: [{ productId: MILK, quantity: '4' }], clientOpId: opId });
+  const order = await api('/sales-orders', manager, { method: 'POST', body });
+  const again = await api('/sales-orders', manager, { method: 'POST', body });
+  assert.equal(again.body.id, order.body.id, 'Auftrag mit gleicher clientOpId nur einmal');
+  assert.equal(order.body.lines[0].sku, 'LAIT');
+  assert.equal(order.body.lines[0].productName.fr, 'Lait 1 L');
+  assert.equal(order.body.customerName, cust.body.name);
+
+  const list = await api(`/sales-orders?customerId=${customerId}`, manager);
+  assert.equal(list.status, 200);
+  assert.deepEqual(list.body.items.map((o: { id: string }) => o.id), [order.body.id]);
+  assert.equal((await api('/sales-orders?status=draft&limit=1', manager)).body.items.length, 1);
+  assert.equal((await api('/sales-orders', cashier)).status, 403);
+  assert.equal((await api('/sales-orders?cursor=kaputt', manager)).status, 400);
+
+  // Kriterium 2: Kreditlimit-Antwort mit Beträgen; Übersteuern nur für Inhaber
+  const denied = await api(`/sales-orders/${order.body.id}/confirm`, manager, { method: 'POST', body: '{}' });
+  assert.equal(denied.status, 409);
+  assert.equal(denied.body.code, 'CREDIT_LIMIT');
+  assert.equal(denied.body.limit, '1000');
+  assert.equal(denied.body.open, '0');
+  assert.ok(BigInt(denied.body.order) > 1000n);
+  assert.equal(denied.body.canOverride, false);
+  const ownerView = await api(`/sales-orders/${order.body.id}/confirm`, owner, { method: 'POST', body: '{}' });
+  assert.equal(ownerView.body.canOverride, true);
+  const confirmed = await api(`/sales-orders/${order.body.id}/confirm`, owner, {
+    method: 'POST', body: JSON.stringify({ overrideReason: 'Stammkunde, zahlt bar bei Lieferung' }) });
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.body.status, 'confirmed');
+
+  // Kriterium 1: gleiche Lieferung zweimal gesendet (z. B. nach Netzabbruch) -> eine Buchung
+  const stockBefore = (await admin.query(`SELECT quantity::text FROM app.store_stock WHERE store_id = $1 AND product_id = $2`,
+    [STORE_A1, MILK])).rows[0].quantity;
+  const delivery = JSON.stringify({ clientOpId: randomUUID(), lines: [{ orderLineId: order.body.lines[0].id, quantity: '3' }] });
+  const d1 = await api(`/sales-orders/${order.body.id}/deliveries`, manager, { method: 'POST', body: delivery });
+  const d2 = await api(`/sales-orders/${order.body.id}/deliveries`, manager, { method: 'POST', body: delivery });
+  assert.equal(d1.status, 201, JSON.stringify(d1.body));
+  assert.equal(d2.body.id, d1.body.id);
+  const stockAfter = (await admin.query(`SELECT quantity::text FROM app.store_stock WHERE store_id = $1 AND product_id = $2`,
+    [STORE_A1, MILK])).rows[0].quantity;
+  assert.equal(Number(stockBefore) - Number(stockAfter), 3, 'nur einmal gebucht');
+  const reloaded = await api(`/sales-orders/${order.body.id}`, manager);
+  assert.equal(reloaded.body.lines[0].quantityDelivered, '3.000');
+
+  // Rechnung je Lieferung -> Rechnungsliste und Detail
+  const inv = await api(`/deliveries/${d1.body.id}/invoice`, manager, { method: 'POST', body: '{}' });
+  assert.ok([200, 201].includes(inv.status), JSON.stringify(inv.body));
+  const invoices = await api(`/invoices?customerId=${customerId}`, manager);
+  assert.deepEqual(invoices.body.items.map((i: { id: string }) => i.id), [inv.body.id]);
+  const detail = await api(`/invoices/${inv.body.id}`, manager);
+  assert.equal(detail.body.customerName, cust.body.name);
+  assert.match(detail.body.number, /^FA-/u);
+  assert.equal((await api(`/invoices/${randomUUID()}`, manager)).status, 404);
+  assert.equal((await api('/invoices', cashier)).status, 403);
+});
