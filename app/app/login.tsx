@@ -29,7 +29,7 @@ export default function LoginScreen() {
         : { email: email.trim(), password, totp: totp || undefined });
       await saveAuthSession(session);
       setPassword(''); setPin(''); setTotp('');
-      router.replace('/license');
+      router.replace('/home');
     } catch (e) {
       if (e instanceof ServerError && e.status === 423) setError(t('locked'));
       else if (e instanceof ServerError && /TOTP-Code erforderlich/u.test(e.message)) setError(t('totpRequired'));

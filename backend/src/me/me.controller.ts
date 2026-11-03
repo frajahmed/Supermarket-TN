@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { Ctx } from '../auth/auth.guard';
 import { RequestContext } from '../auth/request-context';
 import { ZodPipe } from '../common/zod.pipe';
@@ -9,6 +9,12 @@ import { MeService } from './me.service';
 @Controller('me')
 export class MeController {
   constructor(private readonly me: MeService) {}
+
+  /** Profil, Rechte, Filialen und Lizenzstatus des angemeldeten Nutzers (alle Rollen). */
+  @Get()
+  profile(@Ctx() ctx: RequestContext) {
+    return this.me.profile(ctx);
+  }
 
   /** Startet die 2FA-Einrichtung; Antwort enthält das Geheimnis genau einmal. */
   @Post('2fa/setup') @HttpCode(200)
