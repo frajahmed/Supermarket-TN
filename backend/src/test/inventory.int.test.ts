@@ -705,3 +705,28 @@ test('T-105: Auftrag -> Kreditlimit bei Bestätigung -> Teillieferung -> Rechnun
     headers: { authorization: `Bearer ${await token(OWNER_B, T_B, 'owner')}` } });
   assert.equal(foreign.status, 404);
 });
+
+test('T-109: GET /me liefert Rolle, Rechte, Filialen und Lizenz – für alle vier Rollen', async () => {
+  const cases: Array<[string, string, 'owner' | 'manager' | 'stock_clerk' | 'cashier', string[], string[]]> = [
+    // Benutzer, Mandant, Rolle, muss enthalten, darf nicht enthalten
+    [OWNER_A, T_A, 'owner', ['user.manage.all', 'invoice.issue', 'report.finance'], []],
+    [MANAGER_A, T_A, 'manager', ['invoice.issue', 'sales.order', 'user.manage'], ['user.manage.all', 'tenant.settings']],
+    [CLERK_A, T_A, 'stock_clerk', ['stock.receive', 'sales.order'], ['invoice.issue', 'report.finance', 'user.manage']],
+    [CASHIER_A, T_A, 'cashier', ['sale.create', 'stock.read'], ['sales.order', 'invoice.issue', 'stock.receive']],
+  ];
+  for (const [sub, tid, role, must, mustNot] of cases) {
+    const me = await api('/me', await token(sub, tid, role));
+    assert.equal(me.status, 200, role);
+    assert.equal(me.body.user.id, sub);
+    assert.equal(me.body.user.role, role);
+    for (const p of must) assert.ok(me.body.permissions.includes(p), `${role} braucht ${p}`);
+    for (const p of mustNot) assert.ok(!me.body.permissions.includes(p), `${role} darf ${p} nicht haben`);
+    assert.equal(me.body.license.mode, 'active');
+    assert.equal(Object.hasOwn(me.body.user, 'passwordHash'), false);
+  }
+  const owner = await api('/me', await token(OWNER_A, T_A, 'owner'));
+  assert.deepEqual(owner.body.stores.map((s: { id: string }) => s.id).sort(), [STORE_A1, STORE_A2].sort(), 'Inhaber: alle Filialen');
+  const clerk = await api('/me', await token(CLERK_A, T_A, 'stock_clerk'));
+  assert.deepEqual(clerk.body.stores.map((s: { id: string }) => s.id), [STORE_A1], 'Lagerist: nur zugewiesene Filiale');
+  assert.equal((await fetch(`${base}/api/v1/me`)).status, 401);
+});

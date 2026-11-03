@@ -1,10 +1,11 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import nacl from 'tweetnacl';
+import { ApiClient, sessionFromTokenResponse, type Session, type SessionStorage } from '../core/api-client.ts';
 import { createChallengeProof } from '../core/challenge.ts';
 import {
   AUTH_SESSION_KEY, DEVICE_CERTIFICATE_KEY, generateIdentity, loadOrCreateIdentity,
-  SERVER_URL_KEY, signingKey, type DeviceIdentity, type SecureStoreLike,
+  SELECTED_STORE_KEY, SERVER_URL_KEY, signingKey, type DeviceIdentity, type SecureStoreLike,
 } from '../core/identity.ts';
 
 /**
@@ -37,8 +38,42 @@ export async function saveDeviceCertificate(certificate: string): Promise<void> 
   await secureStore.setItemAsync(DEVICE_CERTIFICATE_KEY, certificate);
 }
 
-export async function saveAuthSession(session: unknown): Promise<void> {
-  await secureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(session));
+/** Sitzung im SecureStore (T-109). Ungültiger Inhalt zählt als „keine Sitzung“. */
+export const sessionStorage: SessionStorage = {
+  async load() {
+    const value = await secureStore.getItemAsync(AUTH_SESSION_KEY);
+    if (!value) return null;
+    try {
+      const p = JSON.parse(value) as Partial<Session>;
+      return typeof p.accessToken === 'string' && typeof p.refreshToken === 'string' && typeof p.expiresAt === 'number'
+        ? { accessToken: p.accessToken, refreshToken: p.refreshToken, expiresAt: p.expiresAt } : null;
+    } catch {
+      return null;
+    }
+  },
+  async save(session) { await secureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(session)); },
+  async clear() { await secureStore.deleteItemAsync(AUTH_SESSION_KEY); },
+};
+
+/** Antwort von /auth/login speichern (Ablaufzeit relativ zur Geräteuhr). */
+export async function saveAuthSession(response: unknown): Promise<void> {
+  await sessionStorage.save(sessionFromTokenResponse(
+    response as { accessToken: string; refreshToken: string; expiresIn: number }, Math.floor(Date.now() / 1000)));
+}
+
+/** API-Client für den aktivierten Kundenserver; null, wenn das Gerät noch nicht eingerichtet ist. */
+export async function createApiClient(onSignedOut: () => void): Promise<ApiClient | null> {
+  const baseUrl = await loadServerUrl();
+  if (!baseUrl) return null;
+  return new ApiClient({ baseUrl, storage: sessionStorage, fetchFn: (url, init) => fetch(url, init), onSignedOut });
+}
+
+export async function loadSelectedStore(): Promise<string | null> {
+  return secureStore.getItemAsync(SELECTED_STORE_KEY);
+}
+
+export async function saveSelectedStore(storeId: string): Promise<void> {
+  await secureStore.setItemAsync(SELECTED_STORE_KEY, storeId);
 }
 
 export async function loadAccessToken(): Promise<string | null> {

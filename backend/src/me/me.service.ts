@@ -2,6 +2,8 @@ import {
   BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException,
 } from '@nestjs/common';
 import { AuthFlowProvider } from '../auth/auth.module-providers';
+import { permissionsFor } from '../auth/permissions';
+import { LicensingService } from '../licensing/licensing.service';
 import { RequestContext } from '../auth/request-context';
 import {
   decryptTotpSecret, encryptTotpSecret, generateTotpSecret, matchingTotpStep, totpUri,
@@ -21,7 +23,33 @@ const TOTP_ROLES = new Set(['owner', 'manager']);
  */
 @Injectable()
 export class MeService {
-  constructor(private readonly db: DbService, private readonly auth: AuthFlowProvider) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly auth: AuthFlowProvider,
+    private readonly licensing: LicensingService,
+  ) {}
+
+  /** Profil für die App: wer bin ich, was darf ich, in welchen Filialen, wie steht die Lizenz. */
+  async profile(ctx: RequestContext) {
+    return this.db.withTenant(ctx, async (db) => {
+      const u = await db.query(
+        `SELECT id, email::text AS email, display_name AS "displayName", role, locale,
+                (totp_secret_enc IS NOT NULL) AS "totpConfigured"
+           FROM app.users WHERE id = $1`, [ctx.userId]);
+      if (!u.rows[0]) throw new NotFoundException('Benutzer nicht gefunden');
+      // Inhaber: alle aktiven Filialen; sonst nur zugewiesene (RLS + Kontext aus dem Guard)
+      const stores = await db.query(
+        `SELECT id, code, name FROM app.stores
+          WHERE is_active AND ($1::text = 'owner' OR id = ANY($2::uuid[]))
+          ORDER BY code`, [ctx.role, ctx.storeIds]);
+      return {
+        user: u.rows[0],
+        permissions: permissionsFor(ctx.role),
+        stores: stores.rows,
+        license: this.licensing.gate.status(),
+      };
+    });
+  }
 
   async setupTotp(ctx: RequestContext): Promise<{ secret: string; otpauthUri: string; expiresIn: number }> {
     this.assertTotpRole(ctx);

@@ -20,6 +20,7 @@ export type RandomBytes = (count: number) => Uint8Array;
 
 export const DEVICE_IDENTITY_KEY = 'stn.device.identity.v1';
 export const DEVICE_CERTIFICATE_KEY = 'stn.device.certificate.v1';
+export const SELECTED_STORE_KEY = 'stn.selected-store.v1';
 export const AUTH_SESSION_KEY = 'stn.auth.session.v1';
 export const SERVER_URL_KEY = 'stn.server.url.v1';
 
