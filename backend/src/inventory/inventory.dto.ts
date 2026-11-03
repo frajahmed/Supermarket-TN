@@ -11,6 +11,11 @@ export const MovementInput = z.object({
   storeId: z.string().uuid(),
   productId: z.string().uuid(),
   lotId: z.string().uuid().optional(),
+  /** T-113: Charge per Nummer/MHD angeben; der Server sucht oder legt sie an (nur bei Zugang). */
+  lot: z.object({
+    lotNumber: z.string().trim().min(1).max(100).optional(),
+    expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u, 'MHD als JJJJ-MM-TT'),
+  }).strict().optional(),
   type: z.enum(movementTypes),
   // Als String, damit Mengen wie "0.250" (kg) ohne Float-Fehler ankommen
   quantityDelta: z.string().regex(/^-?\d{1,11}(\.\d{1,3})?$/),
@@ -19,7 +24,7 @@ export const MovementInput = z.object({
   refType: z.enum(['sale', 'document', 'purchase_order', 'transfer', 'count']).optional(),
   refId: z.string().uuid().optional(),
   occurredAt: z.string().datetime({ offset: true }),
-});
+}).refine((m) => !(m.lot && m.lotId), { message: 'lot und lotId schließen sich aus', path: ['lot'] });
 export type MovementInput = z.infer<typeof MovementInput>;
 
 /** POST /sync/push – Stapel aus der Offline-Queue eines Geräts. */
@@ -46,5 +51,7 @@ export const StockQuery = z.object({
   cursor: z.string().trim().max(256).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   low: z.enum(['true', 'false']).optional(),
+  /** Inventur je Regal: Lagerplatz beginnt mit … (store_products.shelf_location) */
+  location: z.string().trim().min(1).max(50).optional(),
 });
 export type StockQuery = z.infer<typeof StockQuery>;

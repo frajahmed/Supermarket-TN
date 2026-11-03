@@ -915,3 +915,47 @@ test('T-112: Auftragsliste, Kreditlimit mit Beträgen, doppelte Lieferung bucht 
   assert.equal((await api(`/invoices/${randomUUID()}`, manager)).status, 404);
   assert.equal((await api('/invoices', cashier)).status, 403);
 });
+
+test('T-113: Wareneingang mit Charge/MHD, Verlust mit Begründung, Inventurdifferenz, Regal-Filter', async () => {
+  const clerk = await token(CLERK_A, T_A, 'stock_clerk');
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+  const push = async (tok: string, movements: unknown[]) =>
+    (await api('/sync/push', tok, { method: 'POST', body: JSON.stringify({ movements }) })).body.results as Array<{ status: string; error?: string }>;
+  const lotNo = `L-${randomUUID().slice(0, 6)}`;
+  const lot = { lotNumber: lotNo, expiryDate: '2031-05-01' };
+
+  // Zwei Eingänge derselben Charge -> eine Charge mit Summe
+  const r1 = await push(clerk, [mv({ type: 'purchase_receipt', quantityDelta: '12', lot }), mv({ type: 'purchase_receipt', quantityDelta: '6', lot })]);
+  assert.deepEqual(r1.map((r) => r.status), ['accepted', 'accepted']);
+  const lots = await admin.query(`SELECT quantity::text FROM app.stock_lots WHERE store_id = $1 AND product_id = $2 AND lot_number = $3`,
+    [STORE_A1, MILK, lotNo]);
+  assert.deepEqual(lots.rows.map((r) => r.quantity), ['18.000']);
+  // lot und lotId gleichzeitig -> 400; unbekannte Charge bei Abgang -> abgelehnt, keine leere Charge angelegt
+  const both = await api('/sync/push', clerk, { method: 'POST', body: JSON.stringify({ movements: [mv({ type: 'purchase_receipt', quantityDelta: '1', lot, lotId: randomUUID() })] }) });
+  assert.equal(both.status, 400);
+  const unknown = await push(clerk, [mv({ type: 'loss', quantityDelta: '-1', reason: 'kaputt', lot: { lotNumber: 'GIBT-ES-NICHT', expiryDate: '2031-01-01' } })]);
+  assert.deepEqual(unknown.map((r) => r.status), ['rejected']);
+  assert.equal((await admin.query(`SELECT 1 FROM app.stock_lots WHERE lot_number = 'GIBT-ES-NICHT'`)).rowCount, 0);
+
+  // Verlust: ohne Begründung abgelehnt, mit Begründung aus der Charge gebucht
+  const loss = await push(clerk, [mv({ type: 'loss', quantityDelta: '-2', lot }), mv({ type: 'loss', quantityDelta: '-2', lot, reason: 'MHD abgelaufen' })]);
+  assert.deepEqual(loss.map((r) => r.status), ['rejected', 'accepted']);
+  const lotAfter = await admin.query(`SELECT quantity::text FROM app.stock_lots WHERE lot_number = $1`, [lotNo]);
+  assert.equal(lotAfter.rows[0].quantity, '16.000');
+
+  // Kriterium 1: Inventurdifferenz mit Vorzeichen (−3 und +1), Kassierer darf nicht zählen
+  const before = Number((await admin.query(`SELECT quantity FROM app.store_stock WHERE store_id = $1 AND product_id = $2`, [STORE_A1, MILK])).rows[0].quantity);
+  const count = await push(clerk, [mv({ type: 'inventory_count', quantityDelta: '-3', refType: 'count' }), mv({ type: 'inventory_count', quantityDelta: '1', refType: 'count' })]);
+  assert.deepEqual(count.map((r) => r.status), ['accepted', 'accepted']);
+  const after = Number((await admin.query(`SELECT quantity FROM app.store_stock WHERE store_id = $1 AND product_id = $2`, [STORE_A1, MILK])).rows[0].quantity);
+  assert.equal(before - after, 2);
+  assert.deepEqual((await push(cashier, [mv({ type: 'inventory_count', quantityDelta: '-1' })])).map((r) => r.status), ['rejected']);
+
+  // Inventur je Regal
+  await admin.query(`INSERT INTO app.store_products (tenant_id, store_id, product_id, shelf_location) VALUES ($1, $2, $3, 'A-01')
+                     ON CONFLICT (store_id, product_id) DO UPDATE SET shelf_location = 'A-01'`, [T_A, STORE_A1, MILK]);
+  const shelf = await api(`/stores/${STORE_A1}/stock?location=A-&limit=100`, clerk);
+  assert.equal(shelf.status, 200);
+  assert.ok(shelf.body.items.length >= 1 && shelf.body.items.every((i: { shelfLocation: string }) => i.shelfLocation.startsWith('A-')));
+  assert.equal((await api(`/stores/${STORE_A1}/stock?location=ZZ9&limit=100`, clerk)).body.items.length, 0);
+});

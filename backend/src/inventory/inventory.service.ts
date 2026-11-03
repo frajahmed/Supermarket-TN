@@ -69,6 +69,11 @@ export class InventoryService {
     }
     await db.query('SAVEPOINT mv');
     try {
+      const lotId = m.lot ? await this.resolveLot(db, ctx, m) : m.lotId ?? null;
+      if (m.lot && !lotId) {
+        await db.query('RELEASE SAVEPOINT mv');
+        return { clientOpId: m.clientOpId, status: 'rejected', error: 'Charge nicht gefunden' };
+      }
       const res = await db.query<{ id: string }>(
         `INSERT INTO app.stock_movements
            (tenant_id, store_id, product_id, lot_id, type, quantity_delta, unit_cost, reason,
@@ -76,7 +81,7 @@ export class InventoryService {
          VALUES ($1, $2, $3, $4, $5, $6::numeric, $7::bigint, $8, $9, $10, $11, $12, $13, $14)
          ON CONFLICT (tenant_id, client_op_id) DO NOTHING
          RETURNING id`,
-        [ctx.tenantId, m.storeId, m.productId, m.lotId ?? null, m.type, m.quantityDelta,
+        [ctx.tenantId, m.storeId, m.productId, lotId, m.type, m.quantityDelta,
          m.unitCost ?? null, m.reason ?? null, m.refType ?? null, m.refId ?? null,
          m.clientOpId, ctx.deviceId ?? null, ctx.userId, m.occurredAt],
       );
@@ -97,6 +102,30 @@ export class InventoryService {
    * GET /sync/pull – alles seit dem letzten Cursor einer Filiale.
    * Der Journal-Id dient als monotoner Cursor; das Gerät speichert `nextCursor`.
    */
+  /**
+   * Charge über Nummer + MHD finden; bei Zugang (Menge > 0) anlegen. Advisory-Lock verhindert,
+   * dass zwei Geräte gleichzeitig dieselbe Charge doppelt anlegen.
+   */
+  private async resolveLot(db: PoolClient, ctx: RequestContext, m: MovementInput): Promise<string | null> {
+    const lot = m.lot!;
+    await db.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+      [`lot:${m.storeId}:${m.productId}:${lot.lotNumber ?? ''}:${lot.expiryDate}`]);
+    const found = await db.query<{ id: string }>(
+      `SELECT id FROM app.stock_lots
+        WHERE store_id = $1 AND product_id = $2 AND lot_number IS NOT DISTINCT FROM $3 AND expiry_date = $4::date
+        ORDER BY received_at LIMIT 1`,
+      [m.storeId, m.productId, lot.lotNumber ?? null, lot.expiryDate]);
+    if (found.rows[0]) return found.rows[0].id;
+    if (!m.quantityDelta.trim().startsWith('-')) {
+      const created = await db.query<{ id: string }>(
+        `INSERT INTO app.stock_lots (tenant_id, store_id, product_id, lot_number, expiry_date)
+         VALUES ($1, $2, $3, $4, $5::date) RETURNING id`,
+        [ctx.tenantId, m.storeId, m.productId, lot.lotNumber ?? null, lot.expiryDate]);
+      return created.rows[0].id;
+    }
+    return null;
+  }
+
   async pull(ctx: RequestContext, q: PullQuery) {
     return this.db.withTenant(ctx, async (db) => {
       const moves = await db.query(
@@ -180,9 +209,11 @@ export class InventoryService {
               OR EXISTS (SELECT 1 FROM app.product_packagings pp WHERE pp.product_id = p.id AND pp.gtin = $2))
             AND ($4::text IS NULL OR (p.sku, p.id) > ($4::text, $5::uuid))
             AND (NOT $6::boolean OR COALESCE(ss.quantity, 0) < COALESCE(sp.min_stock, p.min_stock))
+            AND ($8::text IS NULL OR sp.shelf_location ILIKE $8 || '%' ESCAPE E'\\\\')
           ORDER BY p.sku, p.id
           LIMIT $7`,
-        [storeId, search, like, cursor?.sku ?? null, cursor?.id ?? null, q.low === 'true', q.limit + 1],
+        [storeId, search, like, cursor?.sku ?? null, cursor?.id ?? null, q.low === 'true', q.limit + 1,
+         q.location === undefined ? null : q.location.replace(/[\\%_]/g, '\\$&')],
       );
       const items = r.rows.slice(0, q.limit);
       const last = items.at(-1);
