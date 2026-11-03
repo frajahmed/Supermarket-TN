@@ -5,7 +5,7 @@ CI auf GitHub (`.github/workflows/ci.yml`) führt bei jedem Push `scripts/test-a
 Status: `offen` → `in Arbeit (Agent)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Agent` (mit Befund).
 Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Definition of Done: siehe `AGENTS.md`.
 
-**Nächste Aufgabe:** T-103 (Nachbesserung, braucht Test auf echtem Gerät).
+**Nächste Aufgabe:** T-109, danach in Reihenfolge T-110 bis T-116. T-117 (Gerätetest) läuft parallel bei Ahmed.
 
 ## Erledigt
 
@@ -17,32 +17,109 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-004 | Login mit Gerätezertifikat, PIN, Refresh-Rotation (`db/004`, `backend/src/core`) | `backend/test-core/` (16), `db/tests/004_auth_test.sql` (A1–A6) |
 | T-101 | Produkt-API: Suche, Barcode/GTIN-Scan, Gebinde, Preisrecht, Audit (`db/005`) – PR #1 | `db/tests/005_product_barcode_test.sql` (P1–P4), NestJS-Integrationstests |
 | T-102 | Benutzerverwaltung, Filialrechte, TOTP-2FA mit Replay-Schutz (`db/006`) – PR #3 | `db/tests/006_…`, `backend/test-core/totp.test.ts`, NestJS-Integrationstest |
+| T-103 | Expo-App: Freischaltung (Gerätetyp, Code, Polling), Anmeldung (Passwort/PIN/2FA), ar/fr/en mit RTL ohne Neustart, nur HTTPS – PR #4 | `app/test/` (12 Tests), App-Typprüfung in CI |
 | T-105 | B2B-Verkauf: Auftrag mit Kreditprüfung, Teillieferung + Lager, Rechnung je Lieferung, Gutschrift, Dokumente fr+ar (`db/008`) – PR #6 | `db/tests/008_sales_flow_test.sql` (S1–S9), Dokument- und Integrationstests |
 | T-108 | 2FA-Fehlversuche zählen, 2FA-Selbsteinrichtung, letzter Inhaber geschützt, gemischte Filialen (`db/007`) – PR #5 | `db/tests/007_…` (O1–O7), Kern- und Integrationstests, Gleichzeitigkeitstest |
 | T-107 | Einkaufspreise nur mit `report.finance`, Literalsuche, Konfliktmeldungen, Audit beim Anlegen – PR #2 | NestJS-Integrationstest „T-107“ |
 
 ---
 
-## T-103 · Expo-App: Freischaltung, Anmeldung, Sprachen
-**Status:** zur Prüfung (Befunde von Claude behoben, PR #4) · **Abhängig von:** T-102 (erledigt)
+## Plan App (Stand 2026-11-03)
 
-**Behobene Befunde:** 1. Seed aus `expo-crypto` + `nacl.setPRNG` · 2. Schreibrichtung über Layout-Stil `direction` (sofort, ohne Neustart, Eingaben bleiben) + gespeicherte Sprache · 3. App-Typprüfung in `scripts/test-all.sh`/CI · 4. alle Texte über i18n (Test prüft Schlüssel in ar/fr/en) · 5. Fehlerbehandlung, Polling stoppt und wechselt zur Anmeldung · 6. nur `https://` (außer `__DEV__`). Zusätzlich: Auswahl des Gerätetyps (Kassen-PIN nur an Kasse/Scanner/Tablet möglich).
-**Offen:** Test auf echtem Gerät (Expo Go) durch Ahmed.
+Das Backend ist bis auf Kasse und Zahlungen fertig; die App kann bisher nur freischalten und anmelden. Reihenfolge nach Nutzen für den ersten Kunden (Großhändler). Jede Aufgabe enthält die nötigen Backend-Endpunkte gleich mit. Gemeinsame Regeln für alle App-Aufgaben:
+- Logik in `app/src/core` (reines TypeScript, mit Node getestet); Bildschirme bleiben dünn.
+- Texte nur über i18n (ar/fr/en), Beträge mit 3 Stellen, Schreibrichtung aus `useLanguage()`.
+- Rechte kommen vom Server (`GET /me`); die App blendet aus, was die Rolle nicht darf – der Server prüft trotzdem.
 
-Neuer Ordner `app/` (Expo, TypeScript, expo-router):
-- **Erststart:** Schlüsselpaar Ed25519 erzeugen, privater Schlüssel in `expo-secure-store` (Hardware-gestützt, wo verfügbar). Kundenserver-Adresse per QR-Code oder Eingabe; Installations-ID kommt vom Kundenserver (`GET /api/v1/setup/info`, neuer öffentlicher Endpunkt).
-- **Freischalt-Bildschirm:** zeigt den Aktivierungscode groß und fragt alle 5 s den Status ab. Nach Freigabe wird das Zertifikat gespeichert.
-- **Anmeldung:** E-Mail + Passwort (+ TOTP) oder Benutzerauswahl + PIN-Tastatur an Kasse/Scanner/Tablet; Challenge signieren.
-- **i18n:** ar/fr/en mit i18next; Arabisch schaltet RTL (`I18nManager`). Beträge über `Intl.NumberFormat` mit 3 Stellen für TND.
-- **Lizenz-Banner** aus `/license/status` (Warnung gelb, Nur-Lesen rot).
+## T-109 · App-Grundgerüst nach der Anmeldung
+**Status:** offen · **Abhängig von:** T-103
+
+- Backend: `GET /api/v1/me` → Benutzer, Rolle, Rechte-Liste, Filialen (Name, Code), Lizenzstatus.
+- App: Sitzung mit automatischem Token-Erneuern (`/auth/refresh` vor Ablauf und bei 401, einmal), Abmelden (`/auth/logout`, Sitzung löschen).
+- Startseite nach Rolle mit Kacheln nur für erlaubte Bereiche; Filialauswahl, wenn mehrere Filialen.
+- Lizenzbanner auf jeder Seite (Warnung gelb, Nur-Lesen rot), schreibende Aktionen im Nur-Lesen-Modus ausgegraut.
 
 Abnahmekriterien:
-1. Unit-Tests für Signatur/Challenge mit denselben Testvektoren wie `shared/license-core.ts` (Kompatibilität App ↔ Server).
-2. Sprache wechseln ändert die Layoutrichtung ohne Datenverlust.
-3. Kein Geheimnis in AsyncStorage oder Logs (Code-Review durch Claude).
+1. Test: abgelaufenes Access-Token → genau ein Refresh, danach Wiederholung der Anfrage; zweites 401 → Abmelden.
+2. Test: Kacheln je Rolle (Kassierer sieht weder Aufträge noch Benutzer).
+3. Integrationstest `GET /me` für alle vier Rollen.
+
+## T-110 · Produkte, Scan und Bestand
+**Status:** offen · **Abhängig von:** T-109
+
+- Backend: `GET /api/v1/stores/:id/stock?q=&cursor=` (Produkt, Bestand, Mindestbestand, nächstes MHD); Einkaufspreis nur mit `report.finance` (wie T-107).
+- App: Produktsuche, Kamera-Scan (`expo-camera`, EAN-13/EAN-8/Code128/QR) → `GET /products/by-barcode`, Produktdetail mit Bestand und Gebinden; Produkt anlegen/ändern für Rollen mit `product.write`.
+
+Abnahmekriterien:
+1. Test: Scan eines Karton-GTIN zeigt Faktor und Menge je Scan.
+2. Test: unbekannter Barcode → Angebot „Produkt anlegen“ mit vorausgefülltem Barcode.
+3. Integrationstest Bestandsliste: Kassierer sieht keinen Einkaufspreis, fremde Filiale → 403.
+
+## T-111 · Kunden (Großhandel)
+**Status:** offen · **Abhängig von:** T-109
+
+- Backend: `GET/POST/PATCH /api/v1/customers` (Suche Name/Nummer/Matricule fiscal, Recht `customer.manage` zum Schreiben), `GET /customers/:id` mit offenem Saldo (`v_customer_balance`), Kreditlimit, Zahlungsziel, Kundengruppe/Preisliste.
+- App: Kundenliste mit Suche, Kundendetail (Saldo, Limit, letzte Aufträge/Rechnungen), anlegen/ändern.
+
+Abnahmekriterien:
+1. Test: Geschäftskunde ohne Matricule fiscal → 400 mit verständlicher Meldung.
+2. Test: Lagerist kann lesen, aber nicht ändern; Kassierer hat keinen Zugriff.
+
+## T-112 · Aufträge, Lieferung und Rechnung in der App
+**Status:** offen · **Abhängig von:** T-110, T-111
+
+- Backend: `GET /api/v1/sales-orders?status=&customerId=&cursor=`, `GET /api/v1/invoices?customerId=&status=&cursor=`.
+- App: Auftrag erfassen (Kunde wählen, Produkte scannen/suchen, Mengen, Preisvorschau), bestätigen (Kreditlimit-Meldung; Inhaber: Übersteuern mit Begründung), Kommissionierung/Lieferung per Scan (Teillieferung), Rechnung erzeugen.
+- Lieferschein und Rechnung anzeigen, drucken und teilen (`expo-print` erzeugt PDF aus dem HTML des Servers, `expo-sharing`).
+
+Abnahmekriterien:
+1. Test: doppelt gesendete Lieferung (gleiche `clientOpId`) bucht einmal – auch bei Netzabbruch in der App.
+2. Test: Kreditlimit-Antwort (409 `CREDIT_LIMIT`) zeigt Betrag/Limit; Übersteuern nur für Inhaber sichtbar.
+3. Gerätetest: PDF der Rechnung zeigt Arabisch korrekt verbunden.
+
+## T-113 · Lager: Wareneingang, Inventur, Verlust
+**Status:** offen · **Abhängig von:** T-110
+
+- App: Wareneingang per Scan (Menge, MHD, Charge), Inventur (Zählliste je Regal, Differenzbuchung), Verlust mit Pflicht-Begründung – über `/sync/push`.
+- MHD-/Mindestbestand-Warnungen aus `/stores/:id/stock-alerts` als Liste.
+
+Abnahmekriterien:
+1. Test: Inventurdifferenz bucht `inventory_count` mit Vorzeichen.
+2. Test: Verlust ohne Begründung wird in der App verhindert (Server lehnt ohnehin ab).
+
+## T-114 · Zahlungen und offene Posten
+**Status:** offen · **Abhängig von:** T-111
+
+- Backend: `POST /api/v1/customers/:id/payments` (bar, Scheck, Überweisung, Traite; Bezug auf Rechnung optional; Recht `payment.record`), `GET /customers/:id/statement` (Kontoauszug: Rechnungen, Gutschriften, Zahlungen, Saldo).
+- App: Zahlung erfassen, Kontoauszug anzeigen/drucken.
+
+Abnahmekriterien:
+1. Test: Zahlung senkt Saldo; Zahlungen sind unveränderlich (Storno nur als Gegenbuchung).
+2. Test: Kontoauszug-Summe = `customer_open_balance`.
+
+## T-115 · Kasse (Abholverkauf)
+**Status:** offen · **Abhängig von:** T-110
+
+- Backend: Kassenverkauf auf `app.sales`/`sale_lines`/`payments` (fortlaufende Bonnummer je Kasse, idempotent über `client_op_id`, Lagerbuchung), Storno nur als Gegenbuchung mit Recht `sale.void`.
+- App: Kassenbildschirm (Scan, Menge, Rabatt bis Kassierer-Limit, Bar/Karte, Rückgeld), Bon als HTML → Bondrucker (ESC/POS) folgt mit Hardware.
+
+Abnahmekriterien:
+1. Test: Bonnummern lückenlos je Kasse, auch bei gleichzeitigen Verkäufen.
+2. Test: Rabatt über Limit nur mit Freigabe (`discount.approve`).
+
+## T-116 · Benutzer, 2FA und Geräte in der App
+**Status:** offen · **Abhängig von:** T-109
+
+- App: Benutzer anlegen/ändern/deaktivieren (Regeln aus T-102/T-108), eigene 2FA einrichten (QR aus `otpauthUri`), Geräte des Mandanten anzeigen und sperren (`app.revoke_device`, Backend-Endpunkt ergänzen).
+
+## T-117 · Gerätetest der App (Ahmed)
+**Status:** offen · **parallel**
+
+- Expo Go auf einem Android-Gerät, App aus `app/` mit `npx expo start` laden, Freischaltung gegen einen Test-Kundenserver, Anmeldung, Sprachwechsel ar/fr/en.
+- Ergebnis (Fotos/Fehlermeldungen) an Claude; Befunde werden als Aufgaben erfasst.
 
 ## T-104 · Offline-Sync in der App
-**Status:** offen · **Abhängig von:** T-103
+**Status:** offen · **Abhängig von:** T-109, T-113
 
 - Lokale SQLite (verschlüsselt): Produkte, Barcodes, Bestand der eigenen Filiale, Sync-Queue.
 - Buchungen offline erfassen (`client_op_id` = UUID v7), Push in Stapeln ≤ 500, Pull mit Cursor, WebSocket für Live-Updates.
@@ -71,3 +148,4 @@ Abnahmekriterien:
 | 2026-11-03 | T-103 (PR #4) | zurück an Agent | CI grün, aber nur Logik getestet. Blockierend: keine Zufallsquelle für Schlüsselerzeugung auf dem Gerät, RTL erst nach Neustart, App-Typprüfung fehlt in CI. Dazu i18n, Fehlerbehandlung, HTTPS. |
 | 2026-11-03 | T-108 (PR #5) | erledigt (von Claude umgesetzt) | CI 18/18 grün. Lücke bei gemischten Filialen (RLS verbirgt fremde Zuordnungen) während der Umsetzung durch CI gefunden und behoben. |
 | 2026-11-03 | T-105 (PR #6) | erledigt (von Claude umgesetzt) | CI 19/19 grün beim ersten Lauf. Dokumente als HTML statt PDF (Arabisch), begründet in PR. |
+| 2026-11-03 | T-103 (PR #4) | erledigt (Befunde von Claude behoben) | CI 21/21 inkl. App-Typprüfung. Gerätetest offen (T-117). App-Plan T-109–T-117 angelegt. |
