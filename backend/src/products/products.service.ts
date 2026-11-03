@@ -5,6 +5,7 @@ import { PoolClient } from 'pg';
 import { hasPermission } from '../auth/permissions';
 import { RequestContext } from '../auth/request-context';
 import { DbService } from '../db/db.service';
+import { requireStore } from '../inventory/inventory.service';
 import {
   BarcodeCreate, LocalizedName, PackagingCreate, ProductCreate, ProductPatch, ProductQuery,
 } from './products.dto';
@@ -195,6 +196,7 @@ export class ProductsService {
       ]);
       let stock = null;
       if (storeId) {
+        await requireStore(db, storeId);
         const [level, lots] = await Promise.all([
           db.query<{ quantity: string; minStock: string; shelfLocation: string | null }>(
             `SELECT COALESCE(ss.quantity, 0)::text AS quantity,

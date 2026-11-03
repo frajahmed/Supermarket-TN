@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DbService } from '../db/db.service';
 import { RequestContext } from '../auth/request-context';
@@ -32,6 +32,12 @@ function decodeStockCursor(value: string | undefined): { sku: string; id: string
   } catch {
     throw new BadRequestException('Cursor ungültig');
   }
+}
+
+/** Filiale muss im eigenen Mandanten existieren (RLS) – sonst 404 statt einer Liste mit Bestand 0. */
+export async function requireStore(db: PoolClient, storeId: string): Promise<void> {
+  const r = await db.query('SELECT 1 FROM app.stores WHERE id = $1', [storeId]);
+  if (!r.rowCount) throw new NotFoundException('Filiale nicht gefunden');
 }
 
 @Injectable()
@@ -150,6 +156,7 @@ export class InventoryService {
     const search = q.q ?? null;
     const like = search === null ? null : search.replace(/[\\%_]/g, '\\$&');
     return this.db.withTenant(ctx, async (db) => {
+      await requireStore(db, storeId);
       const r = await db.query<StockRow>(
         `SELECT p.id AS "productId", p.sku, p.name, p.unit,
                 COALESCE(sp.sale_price, p.sale_price)::text AS "salePrice",

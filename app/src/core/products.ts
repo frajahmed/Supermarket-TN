@@ -82,7 +82,7 @@ export function expiryState(expiryDate: string | null, today: string): ExpirySta
 export function parseMoneyInput(input: string): string | null {
   const v = input.trim().replace(',', '.');
   const m = /^(\d{1,9})(?:\.(\d{1,3}))?$/u.exec(v);
-  if (!m) return null;
+  if (!m || m[1] === undefined) return null;
   return String(BigInt(m[1]) * 1000n + BigInt((m[2] ?? '').padEnd(3, '0')));
 }
 

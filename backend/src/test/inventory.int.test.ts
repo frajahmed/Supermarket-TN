@@ -760,8 +760,9 @@ test('T-110: Bestandsliste und Produktdetail – Einkaufspreis, Filialgrenze, Ba
   assert.equal(cash.status, 200);
   assert.equal(Object.hasOwn(cash.body.items[0], 'purchasePrice'), false, 'Kassierer sieht keinen Einkaufspreis');
   assert.equal((await api(`/stores/${STORE_A2}/stock`, cashier)).status, 403);
-  assert.equal((await api(`/stores/${STORE_A1}/stock`, await token(OWNER_B, T_B, 'owner'))).body.items?.length ?? 0, 0,
-    'Mandant B sieht keine Bestände von A');
+  const ownerB = await token(OWNER_B, T_B, 'owner');
+  assert.equal((await api(`/stores/${STORE_A1}/stock`, ownerB)).status, 404, 'Filiale von Mandant A ist für B unbekannt');
+  assert.equal((await api(`/products/${FLOUR_B}?storeId=${STORE_A1}`, ownerB)).status, 404);
 
   // Seitenweise: zwei Seiten überschneiden sich nicht
   const p1 = await api(`/stores/${STORE_A1}/stock?limit=1`, owner);
