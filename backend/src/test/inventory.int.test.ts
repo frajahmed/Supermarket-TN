@@ -730,3 +730,56 @@ test('T-109: GET /me liefert Rolle, Rechte, Filialen und Lizenz – für alle vi
   assert.deepEqual(clerk.body.stores.map((s: { id: string }) => s.id), [STORE_A1], 'Lagerist: nur zugewiesene Filiale');
   assert.equal((await fetch(`${base}/api/v1/me`)).status, 401);
 });
+
+test('T-110: Bestandsliste und Produktdetail – Einkaufspreis, Filialgrenze, Barcode-Suche, MHD, Seiten', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+  const code = `T110-${randomUUID().slice(0, 8)}`;
+  await admin.query(`INSERT INTO app.product_barcodes (tenant_id, product_id, code) VALUES ($1, $2, $3)`, [T_A, MILK, code]);
+  const lot = await admin.query<{ id: string }>(
+    `INSERT INTO app.stock_lots (tenant_id, store_id, product_id, lot_number, expiry_date)
+     VALUES ($1, $2, $3, 'L-T110', DATE '2030-01-15') RETURNING id`, [T_A, STORE_A1, MILK]);
+  const lotId = lot.rows[0].id;
+  const push = await api('/sync/push', owner, {
+    method: 'POST', body: JSON.stringify({ movements: [mv({ type: 'purchase_receipt', quantityDelta: '5', lotId, unitCost: '900' })] }),
+  });
+  assert.equal(push.body.results[0].status, 'accepted');
+
+  // Suche über exakten Barcode
+  const found = await api(`/stores/${STORE_A1}/stock?q=${code}`, owner);
+  assert.equal(found.status, 200);
+  assert.deepEqual(found.body.items.map((i: { productId: string }) => i.productId), [MILK]);
+  const milk = found.body.items[0];
+  assert.ok('purchasePrice' in milk, 'Inhaber sieht Einkaufspreis');
+  assert.equal(milk.nextExpiry, '2030-01-15');
+  assert.equal(milk.salePrice, '1350');
+  assert.match(milk.quantity, /^-?\d+\.\d{3}$/u);
+
+  // Kassierer: kein Einkaufspreis, fremde Filiale -> 403
+  const cash = await api(`/stores/${STORE_A1}/stock?q=${code}`, cashier);
+  assert.equal(cash.status, 200);
+  assert.equal(Object.hasOwn(cash.body.items[0], 'purchasePrice'), false, 'Kassierer sieht keinen Einkaufspreis');
+  assert.equal((await api(`/stores/${STORE_A2}/stock`, cashier)).status, 403);
+  assert.equal((await api(`/stores/${STORE_A1}/stock`, await token(OWNER_B, T_B, 'owner'))).body.items?.length ?? 0, 0,
+    'Mandant B sieht keine Bestände von A');
+
+  // Seitenweise: zwei Seiten überschneiden sich nicht
+  const p1 = await api(`/stores/${STORE_A1}/stock?limit=1`, owner);
+  assert.ok(p1.body.nextCursor, 'mehr als ein Produkt vorhanden');
+  const p2 = await api(`/stores/${STORE_A1}/stock?limit=1&cursor=${p1.body.nextCursor}`, owner);
+  assert.notEqual(p2.body.items[0].productId, p1.body.items[0].productId);
+  assert.equal((await api(`/stores/${STORE_A1}/stock?cursor=kaputt`, owner)).status, 400);
+
+  // Filter „unter Mindestbestand“ liefert nur betroffene Produkte
+  const low = await api(`/stores/${STORE_A1}/stock?low=true&limit=100`, owner);
+  assert.ok(low.body.items.every((i: { belowMin: boolean }) => i.belowMin));
+
+  // Produktdetail mit Chargen
+  const detail = await api(`/products/${MILK}?storeId=${STORE_A1}`, cashier);
+  assert.equal(detail.status, 200);
+  assert.equal(Object.hasOwn(detail.body.product, 'purchasePrice'), false);
+  assert.ok(detail.body.barcodes.some((b: { code: string }) => b.code === code));
+  assert.ok(detail.body.stock.lots.some((l: { id: string; expiryDate: string }) => l.id === lotId && l.expiryDate === '2030-01-15'));
+  assert.equal((await api(`/products/${MILK}?storeId=${STORE_A2}`, cashier)).status, 403);
+  assert.equal((await api(`/products/${MILK}`, await token(OWNER_B, T_B, 'owner'))).status, 404);
+});

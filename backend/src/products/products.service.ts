@@ -182,6 +182,38 @@ export class ProductsService {
     });
   }
 
+  async detail(ctx: RequestContext, productId: string, storeId?: string) {
+    return this.db.withTenant(ctx, async (db) => {
+      const product = await this.requireProduct(db, productId);
+      const [barcodes, packagings] = await Promise.all([
+        db.query(
+          `SELECT code, symbology, pack_qty::text AS "packQty" FROM app.product_barcodes
+            WHERE product_id = $1 ORDER BY pack_qty, code`, [productId]),
+        db.query(
+          `SELECT id, code, name, factor::text AS factor, gtin, is_default_sale AS "isDefaultSale"
+             FROM app.product_packagings WHERE product_id = $1 ORDER BY factor, code`, [productId]),
+      ]);
+      let stock = null;
+      if (storeId) {
+        const [level, lots] = await Promise.all([
+          db.query<{ quantity: string; minStock: string; shelfLocation: string | null }>(
+            `SELECT COALESCE(ss.quantity, 0)::text AS quantity,
+                    COALESCE(sp.min_stock, p.min_stock)::text AS "minStock", sp.shelf_location AS "shelfLocation"
+               FROM app.products p
+               LEFT JOIN app.store_stock ss ON ss.store_id = $2 AND ss.product_id = p.id
+               LEFT JOIN app.store_products sp ON sp.store_id = $2 AND sp.product_id = p.id
+              WHERE p.id = $1`, [productId, storeId]),
+          db.query(
+            `SELECT id, lot_number AS "lotNumber", expiry_date::text AS "expiryDate", quantity::text AS quantity
+               FROM app.stock_lots WHERE store_id = $2 AND product_id = $1 AND quantity > 0
+              ORDER BY expiry_date NULLS LAST`, [productId, storeId]),
+        ]);
+        stock = { storeId, ...level.rows[0], lots: lots.rows };
+      }
+      return { product: presentProduct(ctx, product), barcodes: barcodes.rows, packagings: packagings.rows, stock };
+    });
+  }
+
   async create(ctx: RequestContext, body: ProductCreate) {
     if ((body.purchasePrice !== undefined || body.salePrice !== undefined)
         && !hasPermission(ctx.role, 'price.update')) {

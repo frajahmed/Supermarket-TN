@@ -2,8 +2,13 @@ import { Body, Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, 
 import { Ctx, RequirePermission } from '../auth/auth.guard';
 import { RequestContext } from '../auth/request-context';
 import { ZodPipe } from '../common/zod.pipe';
-import { PullQuery, PushRequest } from './inventory.dto';
+import { PullQuery, PushRequest, StockQuery } from './inventory.dto';
 import { InventoryService } from './inventory.service';
+
+/** Klare 403 statt leerer Liste; RLS würde ohnehin nichts liefern. */
+export function assertStoreAccess(ctx: RequestContext, storeId: string) {
+  if (ctx.role !== 'owner' && !ctx.storeIds.includes(storeId)) throw new ForbiddenException('Kein Zugriff auf diese Filiale');
+}
 
 @Controller()
 export class InventoryController {
@@ -27,8 +32,19 @@ export class InventoryController {
   @Get('stores/:storeId/stock-alerts')
   @RequirePermission('report.stock')
   alerts(@Ctx() ctx: RequestContext, @Param('storeId', ParseUUIDPipe) storeId: string) {
-    // Klare 403 statt leerer Liste; RLS würde ohnehin nichts liefern
-    if (ctx.role !== 'owner' && !ctx.storeIds.includes(storeId)) throw new ForbiddenException();
+    assertStoreAccess(ctx, storeId);
     return this.inventory.storeOverview(ctx, storeId);
+  }
+
+  /** Bestandsliste einer Filiale für App und Backoffice (T-110). */
+  @Get('stores/:storeId/stock')
+  @RequirePermission('stock.read')
+  stock(
+    @Ctx() ctx: RequestContext,
+    @Param('storeId', ParseUUIDPipe) storeId: string,
+    @Query(new ZodPipe(StockQuery)) q: StockQuery,
+  ) {
+    assertStoreAccess(ctx, storeId);
+    return this.inventory.stockList(ctx, storeId, q);
   }
 }
