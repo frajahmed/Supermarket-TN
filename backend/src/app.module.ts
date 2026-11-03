@@ -19,6 +19,8 @@ import { MeService } from './me/me.service';
 import { UsersController } from './users/users.controller';
 import { UsersService } from './users/users.service';
 import { SetupController } from './setup/setup.controller';
+import { CustomersController } from './customers/customers.controller';
+import { CustomersService } from './customers/customers.service';
 
 @Controller('health')
 class HealthController {
@@ -30,7 +32,7 @@ class HealthController {
 
 @Module({
   controllers: [HealthController, AuthController, InventoryController, ProductsController, UsersController,
-    MeController, SalesController, SetupController],
+    MeController, SalesController, SetupController, CustomersController],
   providers: [
     DbService,
     LicensingService,
@@ -45,6 +47,7 @@ class HealthController {
     UsersService,
     MeService,
     SalesService,
+    CustomersService,
   ],
 })
 export class AppModule {}

@@ -784,3 +784,68 @@ test('T-110: Bestandsliste und Produktdetail – Einkaufspreis, Filialgrenze, Ba
   assert.equal((await api(`/products/${MILK}?storeId=${STORE_A2}`, cashier)).status, 403);
   assert.equal((await api(`/products/${MILK}`, await token(OWNER_B, T_B, 'owner'))).status, 404);
 });
+
+test('T-111: Kunden – Matricule fiscal, Rechte je Rolle, Saldo/Limit, Suche, Audit', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const clerk = await token(CLERK_A, T_A, 'stock_clerk');
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+  const name = `Grossiste ${randomUUID().slice(0, 6)}`;
+
+  // Kriterium 1: Geschäftskunde ohne Matricule fiscal -> 400 mit verständlicher Meldung am Feld taxId
+  const missing = await api('/customers', manager, { method: 'POST', body: JSON.stringify({ name }) });
+  assert.equal(missing.status, 400);
+  const issue = missing.body.issues.find((i: { path: string[] }) => i.path[0] === 'taxId');
+  assert.match(issue.message, /Matricule fiscal/u);
+  const badFormat = await api('/customers', manager, { method: 'POST', body: JSON.stringify({ name, taxId: '12AB' }) });
+  assert.equal(badFormat.status, 400);
+  assert.match(JSON.stringify(badFormat.body.issues), /7 Ziffern/u);
+
+  // Anlegen: Nummer automatisch, Matricule normalisiert, Privatkunde ohne Matricule erlaubt
+  const created = await api('/customers', manager, {
+    method: 'POST',
+    body: JSON.stringify({ name, taxId: ' 1234567a/m/a/000 ', creditLimit: '50000', paymentTermsDays: 30,
+      billingAddress: { city: 'Sfax', governorate: 'Sfax' }, preferredLocale: 'ar-TN' }),
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.match(created.body.number, /^CL-\d{4}-\d{6}$/u);
+  assert.equal(created.body.taxId, '1234567A/M/A/000');
+  assert.equal(created.body.openBalance, '0');
+  assert.equal(created.body.overLimit, false);
+  const id = created.body.id as string;
+  const individual = await api('/customers', owner, { method: 'POST', body: JSON.stringify({ name: 'Client comptoir', type: 'individual' }) });
+  assert.equal(individual.status, 201);
+
+  // Nachträglich zum Geschäftskunden ohne Matricule -> 400 (Prüfung der Datenbank)
+  const toBusiness = await api(`/customers/${individual.body.id}`, owner, { method: 'PATCH', body: JSON.stringify({ type: 'business' }) });
+  assert.equal(toBusiness.status, 400);
+  assert.match(toBusiness.body.message, /Matricule fiscal/u);
+  const dup = await api('/customers', owner, { method: 'POST', body: JSON.stringify({ name: 'X', number: created.body.number, taxId: '7654321B' }) });
+  assert.equal(dup.status, 409);
+
+  // Kriterium 2: Lagerist liest, ändert nicht; Kassierer hat keinen Zugriff
+  const search = await api(`/customers?q=${encodeURIComponent('1234567A')}`, clerk);
+  assert.equal(search.status, 200);
+  assert.deepEqual(search.body.items.map((c: { id: string }) => c.id), [id]);
+  assert.equal((await api(`/customers/${id}`, clerk)).status, 200);
+  assert.equal((await api(`/customers/${id}`, clerk, { method: 'PATCH', body: JSON.stringify({ phone: '71000000' }) })).status, 403);
+  assert.equal((await api('/customers', clerk, { method: 'POST', body: JSON.stringify({ name: 'Y', type: 'individual' }) })).status, 403);
+  assert.equal((await api('/customers', cashier)).status, 403);
+  assert.equal((await api(`/customers/${id}`, cashier)).status, 403);
+
+  // Limit ändern -> Audit; Mandant B sieht den Kunden nicht
+  const patched = await api(`/customers/${id}`, manager, { method: 'PATCH', body: JSON.stringify({ creditLimit: null }) });
+  assert.equal(patched.status, 200);
+  assert.equal(patched.body.creditLimit, null);
+  const audit = await admin.query(`SELECT action FROM app.audit_log WHERE entity_id = $1 ORDER BY id`, [id]);
+  assert.deepEqual(audit.rows.map((r) => r.action), ['customer.create', 'customer.credit_update']);
+  assert.equal((await api(`/customers/${id}`, await token(OWNER_B, T_B, 'owner'))).status, 404);
+
+  // Detail des T-105-Kunden: Saldo aus Rechnungen und letzte Belege
+  const t105 = await api(`/customers?q=${encodeURIComponent('Épicerie Test')}`, owner);
+  const withInvoices = await api(`/customers/${t105.body.items[0].id}`, owner);
+  assert.equal(withInvoices.status, 200);
+  assert.ok(withInvoices.body.recentInvoices.length >= 1, 'Rechnungen aus T-105');
+  assert.ok(withInvoices.body.recentOrders.length >= 1);
+  assert.match(withInvoices.body.customer.openBalance, /^-?\d+$/u);
+});
