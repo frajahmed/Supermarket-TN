@@ -5,7 +5,7 @@ CI auf GitHub (`.github/workflows/ci.yml`) führt bei jedem Push `scripts/test-a
 Status: `offen` → `in Arbeit (Agent)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Agent` (mit Befund).
 Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Definition of Done: siehe `AGENTS.md`.
 
-**Nächste Aufgabe:** T-111, danach in Reihenfolge T-112 bis T-116. T-117 (Gerätetest) läuft parallel bei Ahmed.
+**Nächste Aufgabe:** T-112, danach in Reihenfolge T-113 bis T-116. T-117 (Gerätetest) läuft parallel bei Ahmed.
 
 ## Erledigt
 
@@ -22,6 +22,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-108 | 2FA-Fehlversuche zählen, 2FA-Selbsteinrichtung, letzter Inhaber geschützt, gemischte Filialen (`db/007`) – PR #5 | `db/tests/007_…` (O1–O7), Kern- und Integrationstests, Gleichzeitigkeitstest |
 | T-109 | App-Grundgerüst: `GET /me`, Sitzung mit Token-Erneuerung (einmal, gemeinsam), Abmelden, Startseite nach Rechten, Lizenzbanner, Filialauswahl – PR #7 | `app/test/session.test.ts` (10 Tests), NestJS-Integrationstest „T-109“ |
 | T-110 | Produkte in der App: Bestandsliste je Filiale (`GET /stores/:id/stock`), Detail mit Chargen/Gebinden, Kamera-Scan, Anlegen/Ändern – PR #8 | `app/test/products.test.ts` (7 Tests), NestJS-Integrationstest „T-110“ |
+| T-111 | Kunden: API (Matricule fiscal Pflicht, Nummer automatisch, Saldo/Limit, Audit) und App (Liste, Detail, Anlegen/Ändern) – PR #9 | `app/test/customers.test.ts` (6 Tests), NestJS-Integrationstest „T-111“ |
 | T-107 | Einkaufspreise nur mit `report.finance`, Literalsuche, Konfliktmeldungen, Audit beim Anlegen – PR #2 | NestJS-Integrationstest „T-107“ |
 
 ---
@@ -58,7 +59,7 @@ Abnahmekriterien:
 3. Integrationstest Bestandsliste: Kassierer sieht keinen Einkaufspreis, fremde Filiale → 403.
 
 ## T-111 · Kunden (Großhandel)
-**Status:** offen · **Abhängig von:** T-109
+**Status:** erledigt (PR #9) · **Abhängig von:** T-109
 
 - Backend: `GET/POST/PATCH /api/v1/customers` (Suche Name/Nummer/Matricule fiscal, Recht `customer.manage` zum Schreiben), `GET /customers/:id` mit offenem Saldo (`v_customer_balance`), Kreditlimit, Zahlungsziel, Kundengruppe/Preisliste.
 - App: Kundenliste mit Suche, Kundendetail (Saldo, Limit, letzte Aufträge/Rechnungen), anlegen/ändern.
@@ -150,6 +151,7 @@ Abnahmekriterien:
 | 2026-11-03 | T-103 (PR #4) | zurück an Agent | CI grün, aber nur Logik getestet. Blockierend: keine Zufallsquelle für Schlüsselerzeugung auf dem Gerät, RTL erst nach Neustart, App-Typprüfung fehlt in CI. Dazu i18n, Fehlerbehandlung, HTTPS. |
 | 2026-11-03 | T-109 (PR #7) | erledigt (von Claude umgesetzt) | CI 21/21. Lizenzbanner bisher auf der Startseite; jeder neue Bildschirm (T-110 ff.) übernimmt ihn und graut im Nur-Lesen-Modus Schreibaktionen aus. |
 | 2026-11-03 | T-110 (PR #8) | erledigt (von Claude umgesetzt) | CI fand: fremde Filiale lieferte für Mandant B eine Liste mit Bestand 0 → jetzt 404. Neu: gemeinsame Sitzung (`src/device/session.ts`), Lizenzbanner auf jeder Seite. Kamera nur auf echtem Gerät prüfbar (T-117). |
+| 2026-11-03 | T-111 (PR #9) | erledigt (von Claude umgesetzt) | Lesen mit `sales.order` (Lagerist), Schreiben mit `customer.manage`, Kassierer 403. Kundengruppen/Preislisten nur anzeigen; Pflege folgt im Backoffice. |
 | 2026-11-03 | T-108 (PR #5) | erledigt (von Claude umgesetzt) | CI 18/18 grün. Lücke bei gemischten Filialen (RLS verbirgt fremde Zuordnungen) während der Umsetzung durch CI gefunden und behoben. |
 | 2026-11-03 | T-105 (PR #6) | erledigt (von Claude umgesetzt) | CI 19/19 grün beim ersten Lauf. Dokumente als HTML statt PDF (Arabisch), begründet in PR. |
 | 2026-11-03 | T-103 (PR #4) | erledigt (Befunde von Claude behoben) | CI 21/21 inkl. App-Typprüfung. Gerätetest offen (T-117). App-Plan T-109–T-117 angelegt. |
