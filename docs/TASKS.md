@@ -5,7 +5,7 @@ CI auf GitHub (`.github/workflows/ci.yml`) führt bei jedem Push `scripts/test-a
 Status: `offen` → `in Arbeit (Agent)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Agent` (mit Befund).
 Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Definition of Done: siehe `AGENTS.md`.
 
-**Nächste Aufgabe:** T-112, danach in Reihenfolge T-113 bis T-116. T-117 (Gerätetest) läuft parallel bei Ahmed.
+**Nächste Aufgabe:** T-113, danach in Reihenfolge T-114 bis T-116. T-117 (Gerätetest) läuft parallel bei Ahmed.
 
 ## Erledigt
 
@@ -23,6 +23,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-109 | App-Grundgerüst: `GET /me`, Sitzung mit Token-Erneuerung (einmal, gemeinsam), Abmelden, Startseite nach Rechten, Lizenzbanner, Filialauswahl – PR #7 | `app/test/session.test.ts` (10 Tests), NestJS-Integrationstest „T-109“ |
 | T-110 | Produkte in der App: Bestandsliste je Filiale (`GET /stores/:id/stock`), Detail mit Chargen/Gebinden, Kamera-Scan, Anlegen/Ändern – PR #8 | `app/test/products.test.ts` (7 Tests), NestJS-Integrationstest „T-110“ |
 | T-111 | Kunden: API (Matricule fiscal Pflicht, Nummer automatisch, Saldo/Limit, Audit) und App (Liste, Detail, Anlegen/Ändern) – PR #9 | `app/test/customers.test.ts` (6 Tests), NestJS-Integrationstest „T-111“ |
+| T-112 | Aufträge in der App: Erfassung per Scan, Bestätigen mit Kreditlimit (Übersteuern nur Inhaber), Kommissionierung/Teillieferung, Rechnung, Drucken/PDF teilen; Auftrags- und Rechnungslisten – PR #10 | `app/test/orders.test.ts` (9 Tests), NestJS-Integrationstest „T-112“; Arabisch im PDF: Gerätetest T-117 |
 | T-107 | Einkaufspreise nur mit `report.finance`, Literalsuche, Konfliktmeldungen, Audit beim Anlegen – PR #2 | NestJS-Integrationstest „T-107“ |
 
 ---
@@ -69,7 +70,7 @@ Abnahmekriterien:
 2. Test: Lagerist kann lesen, aber nicht ändern; Kassierer hat keinen Zugriff.
 
 ## T-112 · Aufträge, Lieferung und Rechnung in der App
-**Status:** offen · **Abhängig von:** T-110, T-111
+**Status:** erledigt (PR #10) – Kriterium 3 (PDF Arabisch) im Gerätetest T-117 · **Abhängig von:** T-110, T-111
 
 - Backend: `GET /api/v1/sales-orders?status=&customerId=&cursor=`, `GET /api/v1/invoices?customerId=&status=&cursor=`.
 - App: Auftrag erfassen (Kunde wählen, Produkte scannen/suchen, Mengen, Preisvorschau), bestätigen (Kreditlimit-Meldung; Inhaber: Übersteuern mit Begründung), Kommissionierung/Lieferung per Scan (Teillieferung), Rechnung erzeugen.
@@ -152,6 +153,7 @@ Abnahmekriterien:
 | 2026-11-03 | T-109 (PR #7) | erledigt (von Claude umgesetzt) | CI 21/21. Lizenzbanner bisher auf der Startseite; jeder neue Bildschirm (T-110 ff.) übernimmt ihn und graut im Nur-Lesen-Modus Schreibaktionen aus. |
 | 2026-11-03 | T-110 (PR #8) | erledigt (von Claude umgesetzt) | CI fand: fremde Filiale lieferte für Mandant B eine Liste mit Bestand 0 → jetzt 404. Neu: gemeinsame Sitzung (`src/device/session.ts`), Lizenzbanner auf jeder Seite. Kamera nur auf echtem Gerät prüfbar (T-117). |
 | 2026-11-03 | T-111 (PR #9) | erledigt (von Claude umgesetzt) | Lesen mit `sales.order` (Lagerist), Schreiben mit `customer.manage`, Kassierer 403. Kundengruppen/Preislisten nur anzeigen; Pflege folgt im Backoffice. |
+| 2026-11-03 | T-112 (PR #10) | erledigt (von Claude umgesetzt) | Wiederholte Sendung nutzt dieselbe clientOpId nur bei gleichem Inhalt (sonst würde der Server still den alten Vorgang liefern). Entwürfe können noch nicht storniert/geändert werden; Gutschrift nur über API → später Backoffice. |
 | 2026-11-03 | T-108 (PR #5) | erledigt (von Claude umgesetzt) | CI 18/18 grün. Lücke bei gemischten Filialen (RLS verbirgt fremde Zuordnungen) während der Umsetzung durch CI gefunden und behoben. |
 | 2026-11-03 | T-105 (PR #6) | erledigt (von Claude umgesetzt) | CI 19/19 grün beim ersten Lauf. Dokumente als HTML statt PDF (Arabisch), begründet in PR. |
 | 2026-11-03 | T-103 (PR #4) | erledigt (Befunde von Claude behoben) | CI 21/21 inkl. App-Typprüfung. Gerätetest offen (T-117). App-Plan T-109–T-117 angelegt. |
