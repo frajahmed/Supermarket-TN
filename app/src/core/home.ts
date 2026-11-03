@@ -1,7 +1,17 @@
+import type { LicenseMode } from './license.ts';
+
 /**
  * Startseite nach Rolle (T-109): welche Bereiche als Kacheln erscheinen.
  * Grundlage sind die Rechte aus GET /me – nicht der Rollenname. Der Server prüft trotzdem jede Anfrage.
  */
+/** Antwort von GET /me */
+export interface Profile {
+  user: { id: string; email: string; displayName: string; role: 'owner' | 'manager' | 'stock_clerk' | 'cashier' };
+  permissions: string[];
+  stores: Array<{ id: string; code: string; name: string }>;
+  license: { mode: LicenseMode; reason?: string };
+}
+
 export type HomeTile = 'products' | 'customers' | 'orders' | 'warehouse' | 'payments' | 'pos' | 'users' | 'devices';
 
 const TILE_RULES: ReadonlyArray<[HomeTile, (p: ReadonlySet<string>) => boolean]> = [
@@ -15,12 +25,16 @@ const TILE_RULES: ReadonlyArray<[HomeTile, (p: ReadonlySet<string>) => boolean]>
   ['devices', (p) => p.has('device.manage')],
 ];
 
+/** Ziel einer Kachel; null = Bereich noch im Bau (Platzhalter). */
+export function tileRoute(tile: HomeTile): string | null {
+  return tile === 'products' ? '/products' : null;
+}
+
 export function tilesFor(permissions: readonly string[]): HomeTile[] {
   const set = new Set(permissions);
   return TILE_RULES.filter(([, allowed]) => allowed(set)).map(([tile]) => tile);
 }
 
-import type { LicenseMode } from './license.ts';
 
 /** Schreibende Aktionen nur bei aktiver Lizenz oder in der Warnphase (wie der Server). */
 export function licenseAllowsWrite(mode: LicenseMode): boolean {

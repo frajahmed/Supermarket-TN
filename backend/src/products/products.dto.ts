@@ -65,3 +65,6 @@ export const PackagingCreate = z.object({
   isDefaultSale: z.boolean().optional(),
 }).strict();
 export type PackagingCreate = z.infer<typeof PackagingCreate>;
+
+export const ProductDetailQuery = z.object({ storeId: z.string().uuid().optional() }).strict();
+export type ProductDetailQuery = z.infer<typeof ProductDetailQuery>;

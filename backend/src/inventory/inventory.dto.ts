@@ -39,3 +39,12 @@ export type PushResultItem =
   | { clientOpId: string; status: 'accepted'; movementId: string }
   | { clientOpId: string; status: 'duplicate' }
   | { clientOpId: string; status: 'rejected'; error: string };
+
+/** GET /stores/:storeId/stock – Bestandsliste einer Filiale (T-110). */
+export const StockQuery = z.object({
+  q: z.string().trim().min(1).max(100).optional(),
+  cursor: z.string().trim().max(256).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  low: z.enum(['true', 'false']).optional(),
+});
+export type StockQuery = z.infer<typeof StockQuery>;

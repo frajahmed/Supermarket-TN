@@ -5,8 +5,9 @@ import { Ctx, RequirePermission } from '../auth/auth.guard';
 import { RequestContext } from '../auth/request-context';
 import { ZodPipe } from '../common/zod.pipe';
 import {
-  BarcodeCreate, PackagingCreate, ProductCreate, ProductPatch, ProductQuery,
+  BarcodeCreate, PackagingCreate, ProductCreate, ProductDetailQuery, ProductPatch, ProductQuery,
 } from './products.dto';
+import { assertStoreAccess } from '../inventory/inventory.controller';
 import { ProductsService } from './products.service';
 
 @Controller('products')
@@ -23,6 +24,18 @@ export class ProductsController {
   @RequirePermission('stock.read')
   byBarcode(@Ctx() ctx: RequestContext, @Param('code') code: string) {
     return this.products.byBarcode(ctx, code);
+  }
+
+  /** Produktdetail mit Barcodes, Gebinden und – mit storeId – Bestand und Chargen (T-110). */
+  @Get(':id')
+  @RequirePermission('stock.read')
+  detail(
+    @Ctx() ctx: RequestContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodPipe(ProductDetailQuery)) q: ProductDetailQuery,
+  ) {
+    if (q.storeId) assertStoreAccess(ctx, q.storeId);
+    return this.products.detail(ctx, id, q.storeId);
   }
 
   @Post()

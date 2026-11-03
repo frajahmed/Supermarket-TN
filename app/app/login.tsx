@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput
 import { useTranslation } from 'react-i18next';
 import { CustomerServerClient, ServerError } from '../src/api/customer-server';
 import { loadOrCreateDeviceIdentity, loadServerUrl, saveAuthSession } from '../src/device/runtime';
+import { resetSession } from '../src/device/session';
 
 export default function LoginScreen() {
   const { t } = useTranslation();
@@ -28,6 +29,7 @@ export default function LoginScreen() {
         ? { email: email.trim(), pin, totp: totp || undefined }
         : { email: email.trim(), password, totp: totp || undefined });
       await saveAuthSession(session);
+      resetSession();
       setPassword(''); setPin(''); setTotp('');
       router.replace('/home');
     } catch (e) {

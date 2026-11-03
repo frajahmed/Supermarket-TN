@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DbService } from '../db/db.service';
 import { RequestContext } from '../auth/request-context';
 import { hasPermission, MOVEMENT_PERMISSION } from '../auth/permissions';
-import { MovementInput, PullQuery, PushRequest, PushResultItem } from './inventory.dto';
+import { MovementInput, PullQuery, PushRequest, PushResultItem, StockQuery } from './inventory.dto';
 
 /** Postgres-Fehlercodes, die eine einzelne Bewegung ablehnen statt den Stapel abzubrechen. */
 const REJECTABLE = new Map<string, string>([
@@ -11,6 +11,34 @@ const REJECTABLE = new Map<string, string>([
   ['23503', 'Produkt, Filiale oder Charge unbekannt'],
   ['42501', 'Keine Berechtigung für diese Filiale oder Buchungsart'],
 ]);
+
+
+type StockRow = {
+  productId: string; sku: string; name: Record<string, string>; unit: string; salePrice: string | null;
+  purchasePrice: string | null; quantity: string; minStock: string; belowMin: boolean;
+  nextExpiry: string | null; shelfLocation: string | null;
+};
+
+function encodeStockCursor(c: { sku: string; id: string }): string {
+  return Buffer.from(JSON.stringify(c), 'utf8').toString('base64url');
+}
+
+function decodeStockCursor(value: string | undefined): { sku: string; id: string } | undefined {
+  if (!value) return undefined;
+  try {
+    const c = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as { sku?: unknown; id?: unknown };
+    if (typeof c.sku !== 'string' || typeof c.id !== 'string' || !/^[0-9a-f-]{36}$/iu.test(c.id)) throw new Error('cursor');
+    return { sku: c.sku, id: c.id };
+  } catch {
+    throw new BadRequestException('Cursor ungültig');
+  }
+}
+
+/** Filiale muss im eigenen Mandanten existieren (RLS) – sonst 404 statt einer Liste mit Bestand 0. */
+export async function requireStore(db: PoolClient, storeId: string): Promise<void> {
+  const r = await db.query('SELECT 1 FROM app.stores WHERE id = $1', [storeId]);
+  if (!r.rowCount) throw new NotFoundException('Filiale nicht gefunden');
+}
 
 @Injectable()
 export class InventoryService {
@@ -116,6 +144,53 @@ export class InventoryService {
         ),
       ]);
       return { lowStock: low.rows, expiringSoon: expiring.rows };
+    });
+  }
+
+  /**
+   * Bestandsliste einer Filiale (T-110): Produkt, Bestand, Mindestbestand, nächstes MHD.
+   * Suche über SKU, Namen (ar/fr/en) und exakten Barcode. Einkaufspreis nur mit report.finance.
+   */
+  async stockList(ctx: RequestContext, storeId: string, q: StockQuery) {
+    const cursor = decodeStockCursor(q.cursor);
+    const search = q.q ?? null;
+    const like = search === null ? null : search.replace(/[\\%_]/g, '\\$&');
+    return this.db.withTenant(ctx, async (db) => {
+      await requireStore(db, storeId);
+      const r = await db.query<StockRow>(
+        `SELECT p.id AS "productId", p.sku, p.name, p.unit,
+                COALESCE(sp.sale_price, p.sale_price)::text AS "salePrice",
+                p.purchase_price::text AS "purchasePrice",
+                COALESCE(ss.quantity, 0)::text AS quantity,
+                COALESCE(sp.min_stock, p.min_stock)::text AS "minStock",
+                COALESCE(ss.quantity, 0) < COALESCE(sp.min_stock, p.min_stock) AS "belowMin",
+                (SELECT min(l.expiry_date) FROM app.stock_lots l
+                  WHERE l.store_id = $1 AND l.product_id = p.id AND l.quantity > 0)::text AS "nextExpiry",
+                sp.shelf_location AS "shelfLocation"
+           FROM app.products p
+           LEFT JOIN app.store_stock ss ON ss.store_id = $1 AND ss.product_id = p.id
+           LEFT JOIN app.store_products sp ON sp.store_id = $1 AND sp.product_id = p.id
+          WHERE p.is_active
+            AND ($2::text IS NULL
+              OR p.sku ILIKE '%' || $3 || '%' ESCAPE E'\\\\'
+              OR p.name->>'fr' ILIKE '%' || $3 || '%' ESCAPE E'\\\\'
+              OR p.name->>'ar' ILIKE '%' || $3 || '%' ESCAPE E'\\\\'
+              OR p.name->>'en' ILIKE '%' || $3 || '%' ESCAPE E'\\\\'
+              OR EXISTS (SELECT 1 FROM app.product_barcodes b WHERE b.product_id = p.id AND b.code = $2)
+              OR EXISTS (SELECT 1 FROM app.product_packagings pp WHERE pp.product_id = p.id AND pp.gtin = $2))
+            AND ($4::text IS NULL OR (p.sku, p.id) > ($4::text, $5::uuid))
+            AND (NOT $6::boolean OR COALESCE(ss.quantity, 0) < COALESCE(sp.min_stock, p.min_stock))
+          ORDER BY p.sku, p.id
+          LIMIT $7`,
+        [storeId, search, like, cursor?.sku ?? null, cursor?.id ?? null, q.low === 'true', q.limit + 1],
+      );
+      const items = r.rows.slice(0, q.limit);
+      const last = items.at(-1);
+      const showCost = hasPermission(ctx.role, 'report.finance');
+      return {
+        items: items.map(({ purchasePrice, ...rest }) => (showCost ? { ...rest, purchasePrice } : rest)),
+        nextCursor: r.rows.length > q.limit && last ? encodeStockCursor({ sku: last.sku, id: last.productId }) : null,
+      };
     });
   }
 }
