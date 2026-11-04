@@ -183,6 +183,31 @@ export class AuthFlow {
     };
   }
 
+  /**
+   * Freigabe an der Kasse (T-115): Inhaber oder Filialleiter bestätigt mit Passwort (oder PIN, falls
+   * gesetzt) auf dem Gerät des Kassierers. Fehlversuche zählen wie beim Login (Sperre nach 5).
+   * Liefert die Benutzer-ID des Freigebenden.
+   */
+  async verifyApprover(input: { tenantId: string; email: string; secret: string; deviceId: string;
+    roles: readonly Role[] }): Promise<string> {
+    const user = await this.deps.repo.loginCandidate(input.email.trim());
+    const hashes = user ? [user.passwordHash, user.pinHash].filter((h): h is string => h !== null) : [];
+    let ok = false;
+    for (const h of hashes.length ? hashes : [DUMMY_HASH]) {
+      if (await verifySecret(input.secret, h) && hashes.length) { ok = true; break; }
+    }
+    if (!user || !user.isActive || user.tenantId !== input.tenantId) throw new AuthError(401, 'Freigabe fehlgeschlagen');
+    if (user.lockedUntil && user.lockedUntil > this.now()) {
+      throw new AuthError(423, 'Zu viele Fehlversuche – Konto vorübergehend gesperrt');
+    }
+    if (!ok) {
+      await this.deps.repo.recordLoginAttempt(user.userId, false, input.deviceId);
+      throw new AuthError(401, 'Freigabe fehlgeschlagen');
+    }
+    if (!input.roles.includes(user.role)) throw new AuthError(403, 'Diese Person darf nicht freigeben');
+    return user.userId;
+  }
+
   async refresh(refreshToken: string): Promise<Omit<TokenPair, 'device' | 'user'> & { user: TokenPair['user'] }> {
     const license = this.deps.gate.status();
     if (license.mode === 'unlicensed') throw new AuthError(403, license.reason);

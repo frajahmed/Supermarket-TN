@@ -82,6 +82,7 @@ test('Ändern: nur geänderte Felder; Kachel Produkte führt zur Liste', () => {
   assert.deepEqual(changedFields({ sku: 'A', name: { fr: 'x' }, minStock: '1' }, { sku: 'A', name: { fr: 'y' }, minStock: '1' }), { name: { fr: 'y' } });
   assert.deepEqual(changedFields({ sku: 'A' }, { sku: 'A' }), {});
   assert.equal(tileRoute('products'), '/products');
-  assert.equal(tileRoute('pos'), null);
+  assert.equal(tileRoute('pos'), '/pos');
+  assert.equal(tileRoute('users'), null);
   assert.equal(tileRoute('orders'), '/orders');
 });
