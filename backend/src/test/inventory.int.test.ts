@@ -959,3 +959,80 @@ test('T-113: Wareneingang mit Charge/MHD, Verlust mit Begründung, Inventurdiffe
   assert.ok(shelf.body.items.length >= 1 && shelf.body.items.every((i: { shelfLocation: string }) => i.shelfLocation.startsWith('A-')));
   assert.equal((await api(`/stores/${STORE_A1}/stock?location=ZZ9&limit=100`, clerk)).body.items.length, 0);
 });
+
+test('T-114: Zahlung senkt Saldo, Storno als Gegenbuchung, Kontoauszug = offener Saldo, Rechte', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const clerk = await token(CLERK_A, T_A, 'stock_clerk');
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+  const cust = await api('/customers', manager, { method: 'POST', body: JSON.stringify({ name: `T114 ${randomUUID().slice(0, 6)}`, taxId: '5555555C' }) });
+  const customerId = cust.body.id as string;
+  // Rechnung über den normalen Ablauf
+  const order = await api('/sales-orders', manager, { method: 'POST', body: JSON.stringify({
+    storeId: STORE_A1, customerId, lines: [{ productId: MILK, quantity: '2' }], clientOpId: randomUUID() }) });
+  await api(`/sales-orders/${order.body.id}/confirm`, manager, { method: 'POST', body: '{}' });
+  const del = await api(`/sales-orders/${order.body.id}/deliveries`, manager, { method: 'POST',
+    body: JSON.stringify({ clientOpId: randomUUID(), lines: [{ orderLineId: order.body.lines[0].id, quantity: '2' }] }) });
+  const inv = await api(`/deliveries/${del.body.id}/invoice`, manager, { method: 'POST', body: '{}' });
+  const gross = BigInt(inv.body.grossTotal);
+  const balanceOf = async () => BigInt((await api(`/customers/${customerId}`, manager)).body.customer.openBalance);
+  assert.equal(await balanceOf(), gross);
+
+  // Kriterium 1: Zahlung senkt Saldo; doppelt gesendet = einmal
+  const payBody = JSON.stringify({ amount: '1000', method: 'cheque', reference: 'CHQ 0042', invoiceId: inv.body.id, clientOpId: randomUUID() });
+  const pay = await api(`/customers/${customerId}/payments`, manager, { method: 'POST', body: payBody });
+  assert.equal(pay.status, 201, JSON.stringify(pay.body));
+  const payAgain = await api(`/customers/${customerId}/payments`, manager, { method: 'POST', body: payBody });
+  assert.equal(payAgain.body.id, pay.body.id);
+  assert.equal(BigInt(pay.body.openBalance), gross - 1000n);
+  assert.equal(await balanceOf(), gross - 1000n);
+
+  // Validierung und Rechte
+  const noRef = await api(`/customers/${customerId}/payments`, manager, { method: 'POST',
+    body: JSON.stringify({ amount: '100', method: 'cheque', clientOpId: randomUUID() }) });
+  assert.equal(noRef.status, 400);
+  assert.match(JSON.stringify(noRef.body.issues), /Scheck/u);
+  assert.equal((await api(`/customers/${customerId}/payments`, manager, { method: 'POST',
+    body: JSON.stringify({ amount: '0', method: 'cash', clientOpId: randomUUID() }) })).status, 400);
+  assert.equal((await api(`/customers/${customerId}/payments`, clerk, { method: 'POST',
+    body: JSON.stringify({ amount: '100', method: 'cash', clientOpId: randomUUID() }) })).status, 403);
+  assert.equal((await api(`/customers/${customerId}/statement`, cashier)).status, 403);
+
+  // Unveränderlich: Storno nur als Gegenbuchung, einmal
+  const rev = await api(`/payments/${pay.body.id}/reversal`, owner, { method: 'POST',
+    body: JSON.stringify({ reason: 'Scheck ungedeckt', clientOpId: randomUUID() }) });
+  assert.equal(rev.status, 201, JSON.stringify(rev.body));
+  assert.equal(rev.body.amount, '-1000');
+  assert.equal(rev.body.reversesPaymentId, pay.body.id);
+  assert.equal(await balanceOf(), gross);
+  assert.equal((await api(`/payments/${pay.body.id}/reversal`, owner, { method: 'POST',
+    body: JSON.stringify({ reason: 'nochmal', clientOpId: randomUUID() }) })).status, 409);
+  const cash = await api(`/customers/${customerId}/payments`, manager, { method: 'POST',
+    body: JSON.stringify({ amount: '500', method: 'cash', clientOpId: randomUUID() }) });
+  assert.equal(cash.status, 201);
+
+  // Kriterium 2: Kontoauszug-Summe = customer_open_balance
+  const st = await api(`/customers/${customerId}/statement`, clerk);
+  assert.equal(st.status, 200);
+  assert.deepEqual(st.body.entries.map((e: { kind: string }) => e.kind).sort(), ['invoice', 'payment', 'payment', 'payment_reversal'].sort());
+  assert.equal(st.body.opening, '0');
+  assert.equal(st.body.closing, st.body.customer.openBalance);
+  assert.equal(BigInt(st.body.closing), gross - 500n);
+  const db = (await admin.query(`SELECT app.customer_open_balance($1)::text AS b`, [customerId])).rows[0].b;
+  assert.equal(st.body.closing, db);
+  assert.equal(st.body.entries.find((e: { documentId: string }) => e.documentId === pay.body.id).reversed, true);
+  // Zeitraum in der Zukunft: alles im Anfangssaldo
+  const future = await api(`/customers/${customerId}/statement?from=2099-01-01&to=2099-12-31`, manager);
+  assert.equal(future.body.entries.length, 0);
+  assert.equal(future.body.opening, st.body.closing);
+  assert.equal((await api(`/customers/${customerId}/statement?from=2026-12-01&to=2026-01-01`, manager)).status, 400);
+
+  // Druckdokument
+  const doc = await fetch(`${base}/api/v1/customers/${customerId}/statement/document`, { headers: { authorization: `Bearer ${manager}` } });
+  assert.equal(doc.status, 200);
+  const html = await doc.text();
+  assert.ok(html.includes(`data-closing="${st.body.closing}"`));
+  assert.match(html, /كشف حساب/u);
+  const detail = await api(`/customers/${customerId}`, manager);
+  assert.equal(detail.body.recentPayments.length, 3);
+});
