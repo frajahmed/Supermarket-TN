@@ -24,7 +24,9 @@ const COLUMN_OF: Record<string, string> = {
   phone: 'phone', email: 'email', billingAddress: 'billing_address', preferredLocale: 'preferred_locale', isActive: 'is_active',
 };
 
-type Row = Record<string, unknown> & { id: string; name: string; creditLimit: string | null; openBalance: string };
+type Row = Record<string, unknown> & {
+  id: string; number: string; name: string; taxId: string | null; creditLimit: string | null; openBalance: string;
+};
 
 function withLimitInfo(r: Row) {
   return { ...r, overLimit: r.creditLimit !== null && BigInt(r.openBalance) > BigInt(r.creditLimit) };
