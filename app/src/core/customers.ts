@@ -20,6 +20,8 @@ export interface CustomerDetail {
   recentOrders: Array<{ id: string; number: string; status: string; createdAt: string; grossTotal: string }>;
   recentInvoices: Array<{ id: string; number: string; status: string; isCreditNote: boolean; issueDate: string | null;
     dueDate: string | null; grossTotal: string }>;
+  recentPayments: Array<{ id: string; amount: string; method: string; reference: string | null; receivedAt: string;
+    reversesPaymentId: string | null; reason: string | null; reversed: boolean }>;
 }
 
 export function normalizeTaxId(value: string): string {

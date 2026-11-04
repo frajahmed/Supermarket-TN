@@ -20,7 +20,7 @@ interface InvoiceSummary { number: string; customerName: string; issueDate: stri
 export default function DocumentScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const params = useLocalSearchParams<{ kind: DocumentKind; id: string; number?: string }>();
+  const params = useLocalSearchParams<{ kind: DocumentKind; id: string; number?: string; query?: string }>();
   const [html, setHtml] = useState<string | null>(null);
   const [summary, setSummary] = useState<InvoiceSummary | null>(null);
   const [message, setMessage] = useState('');
@@ -30,13 +30,13 @@ export default function DocumentScreen() {
     void (async () => {
       try {
         const api = await getApi();
-        setHtml(await api.text(documentPath(params.kind, params.id)));
+        setHtml(await api.text(documentPath(params.kind, params.id, params.query ?? '')));
         if (params.kind === 'invoice') setSummary(await api.get<InvoiceSummary>(`/api/v1/invoices/${params.id}`));
       } catch {
         setMessage(t('orders.documentFailed'));
       }
     })();
-  }, [params.kind, params.id, t]);
+  }, [params.kind, params.id, params.query, t]);
 
   const number = summary?.number || params.number || params.id;
 
@@ -65,7 +65,7 @@ export default function DocumentScreen() {
   return (
     <SafeAreaView style={ui.safe}>
       <ScrollView contentContainerStyle={ui.container}>
-        <Text style={ui.title}>{params.kind === 'invoice' ? t('orders.invoice') : t('orders.deliveryNote')} {number}</Text>
+        <Text style={ui.title}>{params.kind === 'invoice' ? t('orders.invoice') : params.kind === 'statement' ? t('payments.statement') : t('orders.deliveryNote')} {number}</Text>
         {summary ? (
           <View style={ui.card}>
             <Text style={{ fontWeight: '700' }}>{summary.customerName}</Text>

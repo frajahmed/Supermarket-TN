@@ -68,3 +68,31 @@ export const CustomerQuery = z.object({
   includeInactive: z.enum(['true', 'false']).optional(),
 }).strict();
 export type CustomerQuery = z.infer<typeof CustomerQuery>;
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u, 'Datum als JJJJ-MM-TT');
+
+/** POST /customers/:id/payments (T-114). Betrag in Millimes. */
+export const PaymentCreate = z.object({
+  amount: z.string().regex(/^[1-9]\d{0,14}$/u, 'Betrag in Millimes, größer als 0'),
+  method: z.enum(['cash', 'cheque', 'transfer', 'traite', 'card', 'other']),
+  reference: z.string().trim().max(100).optional(),
+  receivedAt: isoDate.optional(),
+  invoiceId: z.string().uuid().optional(),
+  clientOpId: z.string().uuid(),
+}).strict().superRefine((p, ctx) => {
+  // Scheck und Traite ohne Nummer sind in der Buchhaltung nicht auffindbar
+  if ((p.method === 'cheque' || p.method === 'traite') && !p.reference) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['reference'], message: 'Scheck-/Traite-Nummer fehlt' });
+  }
+});
+export type PaymentCreate = z.infer<typeof PaymentCreate>;
+
+export const PaymentReverse = z.object({
+  reason: z.string().trim().min(3).max(500),
+  clientOpId: z.string().uuid(),
+}).strict();
+export type PaymentReverse = z.infer<typeof PaymentReverse>;
+
+export const StatementQuery = z.object({ from: isoDate.optional(), to: isoDate.optional() }).strict()
+  .refine((q) => !q.from || !q.to || q.from <= q.to, { message: 'from muss vor to liegen', path: ['from'] });
+export type StatementQuery = z.infer<typeof StatementQuery>;
