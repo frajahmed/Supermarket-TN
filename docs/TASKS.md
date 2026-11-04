@@ -5,7 +5,7 @@ CI auf GitHub (`.github/workflows/ci.yml`) führt bei jedem Push `scripts/test-a
 Status: `offen` → `in Arbeit (Agent)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Agent` (mit Befund).
 Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Definition of Done: siehe `AGENTS.md`.
 
-**Nächste Aufgabe:** T-115, danach T-116. T-117 (Gerätetest) läuft parallel bei Ahmed.
+**Nächste Aufgabe:** T-116; T-118 braucht zuerst eine Entscheidung von Ahmed. T-117 (Gerätetest) läuft parallel bei Ahmed.
 
 ## Erledigt
 
@@ -26,6 +26,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-112 | Aufträge in der App: Erfassung per Scan, Bestätigen mit Kreditlimit (Übersteuern nur Inhaber), Kommissionierung/Teillieferung, Rechnung, Drucken/PDF teilen; Auftrags- und Rechnungslisten – PR #10 | `app/test/orders.test.ts` (9 Tests), NestJS-Integrationstest „T-112“; Arabisch im PDF: Gerätetest T-117 |
 | T-113 | Lager in der App: Wareneingang (Gebinde, MHD, Charge – Charge legt der Server an), Inventur je Regal mit Differenzbuchung, Verlust mit Pflicht-Begründung, Warnungen – PR #11 | `app/test/warehouse.test.ts` (4 Tests), NestJS-Integrationstest „T-113“ |
 | T-114 | Zahlungen (bar, Scheck, Überweisung, Traite …), Storno nur als Gegenbuchung, Kontoauszug mit Anfangs-/Schlusssaldo und Druckdokument fr+ar (`db/009`) – PR #12 | `db/tests/009_payments_test.sql` (Z1–Z6), `backend/test-core/statement-document.test.ts`, `app/test/payments.test.ts`, NestJS-Integrationstest „T-114“ |
+| T-115 | Kasse: lückenlose Bonnummer je Kasse (auch bei gleichzeitigen Verkäufen), Filialpreis brutto, Rabatt bis Kassierer-Limit sonst Freigabe durch Filialleitung (Passwort/PIN, Sperre nach Fehlversuchen), bar/Karte mit Rückgeld, Bon 80 mm fr+ar, Storno als Gegenbon (`db/010`) – PR #13 | `db/tests/010_pos_test.sql` (K1–K6), Kern-Tests Bon/Freigabe, `app/test/pos.test.ts`, NestJS-Integrationstest „T-115“ (10 parallele Verkäufe) |
 | T-107 | Einkaufspreise nur mit `report.finance`, Literalsuche, Konfliktmeldungen, Audit beim Anlegen – PR #2 | NestJS-Integrationstest „T-107“ |
 
 ---
@@ -104,7 +105,7 @@ Abnahmekriterien:
 2. Test: Kontoauszug-Summe = `customer_open_balance`.
 
 ## T-115 · Kasse (Abholverkauf)
-**Status:** offen · **Abhängig von:** T-110
+**Status:** erledigt (PR #13) – Bondrucker (ESC/POS) folgt mit Hardware · **Abhängig von:** T-110
 
 - Backend: Kassenverkauf auf `app.sales`/`sale_lines`/`payments` (fortlaufende Bonnummer je Kasse, idempotent über `client_op_id`, Lagerbuchung), Storno nur als Gegenbuchung mit Recht `sale.void`.
 - App: Kassenbildschirm (Scan, Menge, Rabatt bis Kassierer-Limit, Bar/Karte, Rückgeld), Bon als HTML → Bondrucker (ESC/POS) folgt mit Hardware.
@@ -117,6 +118,14 @@ Abnahmekriterien:
 **Status:** offen · **Abhängig von:** T-109
 
 - App: Benutzer anlegen/ändern/deaktivieren (Regeln aus T-102/T-108), eigene 2FA einrichten (QR aus `otpauthUri`), Geräte des Mandanten anzeigen und sperren (`app.revoke_device`, Backend-Endpunkt ergänzen).
+
+## T-118 · Großhandelspreis ohne Preisliste (Entscheidung Ahmed)
+**Status:** offen – wartet auf Entscheidung
+
+Befund aus T-115: `products.sale_price` ist laut Schema ein Bruttopreis (TTC, so rechnet die Kasse). `app.price_for` (db/003) nimmt ihn für Großhandelsaufträge ohne Preisliste aber als **Netto**preis – die TVA käme doppelt hinzu (z. B. 1,350 TTC → Rechnung 1,350 HT + 19 %).
+
+Optionen: (a) Fallback rechnet aus dem Bruttopreis netto zurück (`round(sale_price × 10000 / (10000 + tax_rate_bp))`), (b) eigenes Feld „Großhandelspreis HT“ am Produkt, (c) Aufträge ohne Preisliste ablehnen.
+Umsetzung als neue Migration; SQL-Test 008 (S2) und Integrationstests anpassen.
 
 ## T-117 · Gerätetest der App (Ahmed)
 **Status:** offen · **parallel**
@@ -158,6 +167,7 @@ Abnahmekriterien:
 | 2026-11-03 | T-112 (PR #10) | erledigt (von Claude umgesetzt) | Wiederholte Sendung nutzt dieselbe clientOpId nur bei gleichem Inhalt (sonst würde der Server still den alten Vorgang liefern). Entwürfe können noch nicht storniert/geändert werden; Gutschrift nur über API → später Backoffice. |
 | 2026-11-03 | T-113 (PR #11) | erledigt (von Claude umgesetzt) | Inventur rechnet gegen den Bestand beim Laden der Liste (Hinweis: außerhalb der Öffnungszeiten zählen); Zählliste max. 100 Positionen je Laden → Regal-Filter nutzen. Einstandspreis beim Wareneingang folgt mit dem Belegleser. |
 | 2026-11-04 | T-114 (PR #12) | erledigt (von Claude umgesetzt) | Neue Migration 009 (Prüfsumme eingetragen). Zahlung erfassen zusätzlich per RLS auf Inhaber/Filialleiter begrenzt. Offene Posten je Rechnung (Zuordnung Zahlung→Rechnung, Fälligkeit/Mahnung) folgt bei Bedarf. |
+| 2026-11-04 | T-115 (PR #13) | erledigt (von Claude umgesetzt) | CI fand: Kassierer sieht Geräte ohne Filiale nicht (RLS), Bon nach Verkauf nicht gefunden – behoben. Neu entdeckt: Großhandelspreis-Fallback brutto/netto, siehe T-118. |
 | 2026-11-03 | T-108 (PR #5) | erledigt (von Claude umgesetzt) | CI 18/18 grün. Lücke bei gemischten Filialen (RLS verbirgt fremde Zuordnungen) während der Umsetzung durch CI gefunden und behoben. |
 | 2026-11-03 | T-105 (PR #6) | erledigt (von Claude umgesetzt) | CI 19/19 grün beim ersten Lauf. Dokumente als HTML statt PDF (Arabisch), begründet in PR. |
 | 2026-11-03 | T-103 (PR #4) | erledigt (Befunde von Claude behoben) | CI 21/21 inkl. App-Typprüfung. Gerätetest offen (T-117). App-Plan T-109–T-117 angelegt. |
