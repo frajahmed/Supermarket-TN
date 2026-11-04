@@ -197,11 +197,12 @@ export async function sendOnce<T>(store: KeyValueStore, intent: string, content:
 // ---------------------------------------------------------------------------
 // Dokumente
 // ---------------------------------------------------------------------------
-export type DocumentKind = 'invoice' | 'delivery' | 'statement';
+export type DocumentKind = 'invoice' | 'delivery' | 'statement' | 'receipt';
 
 /** Für 'statement' ist `id` die Kunden-ID; `query` z. B. "from=2026-10-01". */
 export function documentPath(kind: DocumentKind, id: string, query = ''): string {
   if (kind === 'statement') return `/api/v1/customers/${id}/statement/document${query ? `?${query}` : ''}`;
+  if (kind === 'receipt') return `/api/v1/pos/sales/${id}/receipt`;
   return kind === 'invoice' ? `/api/v1/invoices/${id}/document` : `/api/v1/deliveries/${id}/document`;
 }
 

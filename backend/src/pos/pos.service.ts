@@ -61,10 +61,10 @@ export class PosService {
     assertStoreAccess(ctx, q.storeId);
     return this.run(ctx, async (db) => {
       const r = await db.query(
-        `SELECT s.id, s.receipt_number AS "receiptNumber", s.device_id AS "deviceId", d.name AS "deviceName",
+        `SELECT s.id, s.receipt_number AS "receiptNumber", s.device_id AS "deviceId", coalesce(d.name, 'Caisse') AS "deviceName",
                 s.gross_total::text AS "grossTotal", s.completed_at AS "completedAt", s.voids_sale_id AS "voidsSaleId",
-                EXISTS (SELECT 1 FROM app.sales v WHERE v.voids_sale_id = s.id) AS voided, u.display_name AS cashier
-           FROM app.sales s JOIN app.devices d ON d.id = s.device_id JOIN app.users u ON u.id = s.cashier_id
+                EXISTS (SELECT 1 FROM app.sales v WHERE v.voids_sale_id = s.id) AS voided, coalesce(u.display_name, '') AS cashier
+           FROM app.sales s LEFT JOIN app.devices d ON d.id = s.device_id LEFT JOIN app.users u ON u.id = s.cashier_id
           WHERE s.store_id = $1 AND s.status = 'completed'
             AND s.completed_at >= coalesce($2::date, current_date) AND s.completed_at < coalesce($2::date, current_date) + 1
             AND (NOT $3::boolean OR s.cashier_id = $4)
@@ -97,13 +97,13 @@ export class PosService {
 
   private async load(db: PoolClient, id: string) {
     const r = await db.query(
-      `SELECT s.id, s.store_id AS "storeId", s.receipt_number::text AS "receiptNumber", s.status, d.name AS "deviceName",
-              u.display_name AS cashier, s.completed_at AS "completedAt", s.gross_total::text AS "grossTotal",
+      `SELECT s.id, s.store_id AS "storeId", s.receipt_number::text AS "receiptNumber", s.status, coalesce(d.name, 'Caisse') AS "deviceName",
+              coalesce(u.display_name, '') AS cashier, s.completed_at AS "completedAt", s.gross_total::text AS "grossTotal",
               s.tax_total::text AS "taxTotal", s.net_total::text AS "netTotal", s.discount_total::text AS "discountTotal",
               s.voids_sale_id AS "voidsSaleId", o.receipt_number::text AS "voidsReceiptNumber", s.void_reason AS "voidReason",
               s.discount_approved_by AS "discountApprovedBy",
               EXISTS (SELECT 1 FROM app.sales v WHERE v.voids_sale_id = s.id) AS voided
-         FROM app.sales s JOIN app.devices d ON d.id = s.device_id JOIN app.users u ON u.id = s.cashier_id
+         FROM app.sales s LEFT JOIN app.devices d ON d.id = s.device_id LEFT JOIN app.users u ON u.id = s.cashier_id
          LEFT JOIN app.sales o ON o.id = s.voids_sale_id
         WHERE s.id = $1`, [id]);
     if (!r.rows[0]) throw new NotFoundException('Bon nicht gefunden');

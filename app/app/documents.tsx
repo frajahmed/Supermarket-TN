@@ -65,7 +65,7 @@ export default function DocumentScreen() {
   return (
     <SafeAreaView style={ui.safe}>
       <ScrollView contentContainerStyle={ui.container}>
-        <Text style={ui.title}>{params.kind === 'invoice' ? t('orders.invoice') : params.kind === 'statement' ? t('payments.statement') : t('orders.deliveryNote')} {number}</Text>
+        <Text style={ui.title}>{params.kind === 'invoice' ? t('orders.invoice') : params.kind === 'statement' ? t('payments.statement') : params.kind === 'receipt' ? t('pos.receipt') : t('orders.deliveryNote')} {number}</Text>
         {summary ? (
           <View style={ui.card}>
             <Text style={{ fontWeight: '700' }}>{summary.customerName}</Text>
