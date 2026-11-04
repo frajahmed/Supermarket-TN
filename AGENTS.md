@@ -89,6 +89,16 @@ TypeScript wird von Node direkt ausgeführt (Type Stripping): Nur löschbare Syn
 - Logs ohne personenbezogene Daten und ohne Tokens.
 - Commit-Nachrichten auf Deutsch, erste Zeile ≤ 72 Zeichen, z. B. `T-101: Produkt-API mit Barcode-Suche`.
 
+### Kommentare (gilt für die gesamte App: Backend, App, SQL, Lizenzserver)
+
+- Write self-explanatory code: clear names instead of comments.
+- Do NOT add comments that restate what the code does.
+- Do NOT add comments describing your changes or reasoning (Added, Fixed, Updated...). That belongs in the commit message or PR description.
+- Do NOT add JSDoc/TSDoc on private or obvious functions.
+- Only comment when the why is not obvious: business rule, library workaround (with issue link), performance or security trade-off.
+- Keep comments to one or two lines max.
+- Never delete existing meaningful comments unless the related code is removed.
+
 ## 7. Bekannte Einschränkungen
 
 - Das TEIF-Format von TTN (E-Rechnung) ist noch nicht offiziell spezifiziert im Repo. Nichts erfinden: Struktur nur nach offizieller Spezifikation umsetzen, sonst als offene Frage in `docs/TASKS.md` notieren.
