@@ -341,3 +341,23 @@ test('JWT: Ablauf, Manipulation und fremde Schlüssel werden abgewiesen', () => 
   assert.throws(() => verifyJwt(`${none}.${p}.`, jwtKeys.publicKey, now), JwtError);
   assert.throws(() => verifyJwt(t, generateKeyPairSync('ed25519').publicKey, now), JwtError);
 });
+
+test('T-115: Rabattfreigabe an der Kasse – nur Inhaber/Filialleiter, eigener Mandant, Fehlversuche sperren', async () => {
+  const roles = ['owner', 'manager'] as const;
+  const chef = await repo.loginCandidate('chef@g.tn');
+  const id = await flow.verifyApprover({ tenantId: TENANT, email: 'Chef@g.tn', secret: 'Chef-Passwort-2026', deviceId: 'kasse', roles });
+  assert.equal(id, chef!.userId);
+  await assert.rejects(flow.verifyApprover({ tenantId: randomUUID(), email: 'chef@g.tn', secret: 'Chef-Passwort-2026', deviceId: 'k', roles }),
+    (e: AuthError) => e.status === 401, 'fremder Mandant');
+  await assert.rejects(flow.verifyApprover({ tenantId: TENANT, email: 'caisse@g.tn', secret: '4711', deviceId: 'k', roles }),
+    (e: AuthError) => e.status === 403, 'Kassierer darf nicht freigeben');
+  await assert.rejects(flow.verifyApprover({ tenantId: TENANT, email: 'niemand@g.tn', secret: 'x', deviceId: 'k', roles }),
+    (e: AuthError) => e.status === 401);
+  for (let i = 0; i < 5; i++) {
+    await assert.rejects(flow.verifyApprover({ tenantId: TENANT, email: 'chef@g.tn', secret: 'falsch', deviceId: 'k', roles }),
+      (e: AuthError) => e.status === 401);
+  }
+  await assert.rejects(flow.verifyApprover({ tenantId: TENANT, email: 'chef@g.tn', secret: 'Chef-Passwort-2026', deviceId: 'k', roles }),
+    (e: AuthError) => e.status === 423, 'nach 5 Fehlversuchen gesperrt');
+  now += 16 * 60;
+});

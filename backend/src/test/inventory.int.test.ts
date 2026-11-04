@@ -1036,3 +1036,70 @@ test('T-114: Zahlung senkt Saldo, Storno als Gegenbuchung, Kontoauszug = offener
   const detail = await api(`/customers/${customerId}`, manager);
   assert.equal(detail.body.recentPayments.length, 3);
 });
+
+test('T-115: Kasse – Bonnummern lückenlos bei gleichzeitigen Verkäufen, Rabattfreigabe, Rückgeld, Storno', async () => {
+  const cashier = await token(CASHIER_A, T_A, 'cashier');
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const clerk = await token(CLERK_A, T_A, 'stock_clerk');
+  const sale = (over: Record<string, unknown> = {}) => JSON.stringify({
+    storeId: STORE_A1, clientOpId: randomUUID(), lines: [{ productId: MILK, quantity: '1' }],
+    payments: [{ method: 'cash', amount: '2000' }], ...over });
+
+  const cfg = await api('/pos/config', cashier);
+  assert.equal(cfg.body.cashierMaxDiscountBp, 500);
+  assert.equal(cfg.body.canApproveDiscount, false);
+
+  // Kriterium 1: 10 gleichzeitige Verkäufe an derselben Kasse -> fortlaufend ohne Lücke und ohne Doppelte
+  const results = await Promise.all(Array.from({ length: 10 }, () => api('/pos/sales', cashier, { method: 'POST', body: sale() })));
+  assert.ok(results.every((r) => r.status === 201), JSON.stringify(results.map((r) => r.body).find((b) => !b.id)));
+  const numbers = results.map((r) => Number(r.body.receiptNumber)).sort((a, b) => a - b);
+  for (let i = 1; i < numbers.length; i++) assert.equal(numbers[i], numbers[0]! + i, `Lücke/Doppelt: ${numbers.join(',')}`);
+  assert.equal(results[0]!.body.grossTotal, '1350');
+  assert.equal(results[0]!.body.change, '650', 'Rückgeld 2,000 − 1,350');
+  // Idempotent
+  const fixed = sale();
+  const a = await api('/pos/sales', cashier, { method: 'POST', body: fixed });
+  const b = await api('/pos/sales', cashier, { method: 'POST', body: fixed });
+  assert.equal(a.body.id, b.body.id);
+  assert.equal(Number(a.body.receiptNumber), numbers.at(-1)! + 1);
+
+  // Kriterium 2: Rabatt über Limit nur mit Freigabe
+  const disc = { lines: [{ productId: MILK, quantity: '10', discountBp: 1000 }], payments: [{ method: 'cash', amount: '20000' }] };
+  const denied = await api('/pos/sales', cashier, { method: 'POST', body: sale(disc) });
+  assert.equal(denied.status, 403);
+  assert.equal(denied.body.code, 'DISCOUNT_APPROVAL');
+  const wrong = await api('/pos/sales', cashier, { method: 'POST', body: sale({ ...disc, approval: { email: 'owner@a.tn', secret: 'falsch' } }) });
+  assert.equal(wrong.status, 403);
+  assert.equal(wrong.body.code, 'APPROVAL_FAILED');
+  const byCashier = await api('/pos/sales', cashier, { method: 'POST', body: sale({ ...disc, approval: { email: 'cash@a.tn', secret: '4711' } }) });
+  assert.equal(byCashier.status, 403, 'Kassierer kann sich nicht selbst freigeben');
+  const approved = await api('/pos/sales', cashier, { method: 'POST',
+    body: sale({ ...disc, approval: { email: 'owner@a.tn', secret: 'Chef-Passwort-2026' } }) });
+  assert.equal(approved.status, 201, JSON.stringify(approved.body));
+  assert.equal(approved.body.discountTotal, '1350');
+  assert.equal(approved.body.grossTotal, '12150');
+  assert.equal(approved.body.discountApprovedBy, OWNER_A);
+  const managerSelf = await api('/pos/sales', manager, { method: 'POST', body: sale(disc) });
+  assert.equal(managerSelf.status, 201, 'Filialleiter darf selbst rabattieren');
+
+  // Zahlung: Karte über Bonbetrag abgelehnt; Lagerist hat keine Kasse
+  assert.equal((await api('/pos/sales', cashier, { method: 'POST', body: sale({ payments: [{ method: 'card', amount: '5000' }] }) })).status, 422);
+  assert.equal((await api('/pos/sales', clerk, { method: 'POST', body: sale() })).status, 403);
+
+  // Storno: nicht durch Kassierer; Filialleiter -> Gegenbon, nur einmal; Bon-Dokument
+  const target = results[0]!.body.id as string;
+  assert.equal((await api(`/pos/sales/${target}/void`, cashier, { method: 'POST', body: JSON.stringify({ reason: 'Fehler', clientOpId: randomUUID() }) })).status, 403);
+  const v = await api(`/pos/sales/${target}/void`, manager, { method: 'POST', body: JSON.stringify({ reason: 'Falsch gescannt', clientOpId: randomUUID() }) });
+  assert.equal(v.status, 201, JSON.stringify(v.body));
+  assert.equal(v.body.grossTotal, '-1350');
+  assert.equal(v.body.voidsReceiptNumber, results[0]!.body.receiptNumber);
+  assert.equal((await api(`/pos/sales/${target}/void`, manager, { method: 'POST', body: JSON.stringify({ reason: 'nochmal', clientOpId: randomUUID() }) })).status, 409);
+  const list = await api(`/pos/sales?storeId=${STORE_A1}`, manager);
+  assert.ok(list.body.items.find((s: { id: string }) => s.id === target).voided);
+  const mine = await api(`/pos/sales?storeId=${STORE_A1}`, cashier);
+  assert.ok(mine.body.items.every((s: { cashier: string }) => s.cashier === 'K'), 'Kassierer sieht nur eigene Bons');
+  const doc = await fetch(`${base}/api/v1/pos/sales/${v.body.id}/receipt`, { headers: { authorization: `Bearer ${cashier}` } });
+  assert.equal(doc.status, 200);
+  assert.match(await doc.text(), /ANNULATION du ticket N° \d+/u);
+  assert.equal((await api(`/pos/sales?storeId=${STORE_A2}`, cashier)).status, 403);
+});
