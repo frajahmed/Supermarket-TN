@@ -50,8 +50,8 @@ SELECT set_config('app.tenant_id', '11111111-1111-1111-1111-111111111111', true)
 DO $$ BEGIN
   IF app.price_for('b1000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 10)  <> 4500 THEN RAISE EXCEPTION 'W1 FAIL Staffel 1'; END IF;
   IF app.price_for('b1000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 120) <> 4200 THEN RAISE EXCEPTION 'W1 FAIL Staffel 120'; END IF;
-  IF app.price_for('b1000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000002', 10)  <> 1200 THEN RAISE EXCEPTION 'W1 FAIL Fallback'; END IF;
-  RAISE NOTICE 'W1 ok: Gruppenpreis 4,500 / ab 120 Stück 4,200 / sonst Standardpreis';
+  IF app.price_for('b1000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000002', 10)  <> 1121 THEN RAISE EXCEPTION 'W1 FAIL Fallback (netto aus 1,200 TTC bei 7 %%)'; END IF;
+  RAISE NOTICE 'W1 ok: Gruppenpreis 4,500 / ab 120 Stück 4,200 / sonst Standardpreis netto (1,200 TTC -> 1,121 HT, seit 012)';
 END $$;
 
 -- ---------- W2: Rechnung ausstellen: Summen, TVA je Satz, Timbre, Nummer ----------

@@ -634,8 +634,8 @@ test('T-105: Auftrag -> Kreditlimit bei Bestätigung -> Teillieferung -> Rechnun
   assert.match(order.body.number, /^SO-\d{4}-\d{6}$/);
   const again = await api('/sales-orders', clerk, { method: 'POST', body: JSON.stringify(orderBody) });
   assert.equal(again.body.id, order.body.id, 'doppelt gesendeter Auftrag = ein Auftrag');
-  // 10 × 1,350 = 13,500 + 19 % 2,565 + Timbre 1,000 = 17,065 > Limit 10,000
-  assert.equal(order.body.estimatedGross, '17065');
+  // Ohne Preisliste netto aus 1,350 TTC = 1,134 HT (db/012): 10 × 1,134 = 11,340 + 19 % 2,155 + Timbre 1,000 = 14,495 > Limit 10,000
+  assert.equal(order.body.estimatedGross, '14495');
 
   // Kriterium 1: Kreditlimit blockiert die Bestätigung
   const blocked = await api(`/sales-orders/${order.body.id}/confirm`, clerk, { method: 'POST', body: '{}' });
@@ -669,9 +669,9 @@ test('T-105: Auftrag -> Kreditlimit bei Bestätigung -> Teillieferung -> Rechnun
   assert.equal((await api(`/deliveries/${delivery.body.id}/invoice`, clerk, { method: 'POST' })).status, 403);
   const invoice = await api(`/deliveries/${delivery.body.id}/invoice`, manager, { method: 'POST' });
   assert.equal(invoice.status, 201);
-  // 4 × 1,350 = 5,400 + 19 % 1,026 + Timbre 1,000 = 7,426
+  // 4 × 1,134 = 4,536 + 19 % 862 + Timbre 1,000 = 6,398
   assert.deepEqual([invoice.body.netTotal, invoice.body.taxTotal, invoice.body.stampDuty, invoice.body.grossTotal],
-    ['5400', '1026', '1000', '7426']);
+    ['4536', '862', '1000', '6398']);
 
   // Kriterium 3: Summen im Dokument = Summen in sales_invoices (Kassierer darf drucken)
   const docRes = await fetch(`${base}/api/v1/invoices/${invoice.body.id}/document`, { headers: { authorization: `Bearer ${cashier}` } });

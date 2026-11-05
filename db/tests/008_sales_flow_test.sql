@@ -62,18 +62,19 @@ BEGIN
 END $$;
 
 -- ---------- S2: Kreditlimit blockiert die BESTÄTIGUNG (Kriterium 1) ----------
--- Auftrag brutto: 120×4,200 = 504,000 + 19 % = 599,760; 50×1,200 = 60,000 + 7 % = 64,200; + Timbre 1,000 = 664,960 > 300,000
+-- Auftrag brutto: 120×4,200 = 504,000 + 19 % = 599,760; 50×1,121 (netto aus 1,200 TTC) = 56,050 + 7 % = 59,974;
+-- + Timbre 1,000 = 660,734 > 300,000
 DO $$
 DECLARE v_order uuid := current_setting('test.order')::uuid; v_status app.order_status;
 BEGIN
-  IF app.sales_order_gross(v_order) <> 664960 THEN RAISE EXCEPTION 'S2 FAIL: Brutto %', app.sales_order_gross(v_order); END IF;
+  IF app.sales_order_gross(v_order) <> 660734 THEN RAISE EXCEPTION 'S2 FAIL: Brutto %', app.sales_order_gross(v_order); END IF;
   BEGIN
     PERFORM app.confirm_sales_order(v_order, 'Stammkunde');      -- Filialleiter darf NICHT übersteuern
     RAISE EXCEPTION 'S2 FAIL: Filialleiter bestätigt trotz Limit';
   EXCEPTION WHEN SQLSTATE 'SN402' THEN NULL; END;
   SELECT status INTO v_status FROM app.sales_orders WHERE id = v_order;
   IF v_status <> 'draft' THEN RAISE EXCEPTION 'S2 FAIL: Status %', v_status; END IF;
-  RAISE NOTICE 'S2 ok: Bestätigung über Kreditlimit (664,960 > 300,000) blockiert, auch mit Begründung durch Filialleiter';
+  RAISE NOTICE 'S2 ok: Bestätigung über Kreditlimit (660,734 > 300,000) blockiert, auch mit Begründung durch Filialleiter';
 END $$;
 
 -- ---------- S3: Inhaber übersteuert mit Begründung -> Audit ----------
