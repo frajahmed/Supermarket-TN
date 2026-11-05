@@ -2,7 +2,7 @@ import type { LicenseMode } from './license.ts';
 
 // Kacheln folgen den Rechten aus GET /me, nicht dem Rollennamen.
 export interface Profile {
-  user: { id: string; email: string; displayName: string; role: 'owner' | 'manager' | 'stock_clerk' | 'cashier' };
+  user: { id: string; email: string; displayName: string; role: 'owner' | 'manager' | 'stock_clerk' | 'cashier'; totpConfigured: boolean };
   permissions: string[];
   stores: Array<{ id: string; code: string; name: string }>;
   license: { mode: LicenseMode; reason?: string };
@@ -23,7 +23,8 @@ const TILE_RULES: ReadonlyArray<[HomeTile, (p: ReadonlySet<string>) => boolean]>
 
 /** null = Bereich noch im Bau. */
 export function tileRoute(tile: HomeTile): string | null {
-  const routes: Partial<Record<HomeTile, string>> = { products: '/products', customers: '/customers', orders: '/orders', warehouse: '/warehouse', pos: '/pos' };
+  const routes: Partial<Record<HomeTile, string>> = { products: '/products', customers: '/customers', orders: '/orders', warehouse: '/warehouse', pos: '/pos',
+    users: '/users', devices: '/devices' };
   return routes[tile] ?? null;
 }
 
