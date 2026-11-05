@@ -29,6 +29,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-115 | Kasse: lückenlose Bonnummer je Kasse (auch bei gleichzeitigen Verkäufen), Filialpreis brutto, Rabatt bis Kassierer-Limit sonst Freigabe durch Filialleitung (Passwort/PIN, Sperre nach Fehlversuchen), bar/Karte mit Rückgeld, Bon 80 mm fr+ar, Storno als Gegenbon (`db/010`) – PR #13 | `db/tests/010_pos_test.sql` (K1–K6), Kern-Tests Bon/Freigabe, `app/test/pos.test.ts`, NestJS-Integrationstest „T-115“ (10 parallele Verkäufe) |
 | T-116 | Benutzer (Rollen-/Filialregeln, 2FA zurücksetzen), eigene 2FA-Einrichtung, Geräte (Filiale, Umbenennen, Sperren); lokale Gerätesperre wirkt sofort im Guard (`db/011`) – PR #15 | `db/tests/011_device_revocation_test.sql`, `app/test/users.test.ts`, NestJS-Integrationstest „T-116“ |
 | T-118 | Großhandelspreis ohne Preisliste: Nettopreis aus dem TTC-Preis zurückgerechnet (keine doppelte TVA) – `db/012`, PR #17 | `db/tests/012_…` (N1–N3), angepasste Tests 003/008/T-105 |
+| T-119 | Artikel-Import aus Excel/CSV (Vorlage, Spaltennamen fr/en/ar, Fehler je Zeile, Prüfen gegen die DB, alles oder nichts, Aktualisieren per Artikelnummer, Karton + Barcode) und Pflege von Kartons/Barcodes in der App – PR #18 | `app/test/product-import.test.ts`, NestJS-Integrationstest „T-119“ |
 | T-107 | Einkaufspreise nur mit `report.finance`, Literalsuche, Konfliktmeldungen, Audit beim Anlegen – PR #2 | NestJS-Integrationstest „T-107“ |
 
 ---
@@ -174,6 +175,7 @@ Abnahmekriterien:
 | 2026-11-05 | T-116 (PR #15) | erledigt (von Claude umgesetzt) | Befund: lokal gesperrtes Gerät blieb bis zu 15 min mit gültigem Access-Token nutzbar – Guard prüft jetzt jede Anfrage (db/011). |
 | 2026-11-05 | UI-Bausteine (PR #16) | erledigt | Gemeinsame Komponenten, Kasse in Hook + Komponenten zerlegt (234 → 57 Zeilen), keine Verhaltensänderung. |
 | 2026-11-05 | T-118 (PR #17) | erledigt | Entscheidung Ahmed: Variante (a). Bestehende Aufträge/Rechnungen bleiben unverändert (Preise werden beim Anlegen gespeichert). |
+| 2026-11-05 | T-119 (PR #18) | erledigt (von Claude umgesetzt) | Auf Wunsch von Ahmed vor T-104. Nur CSV (Excel: „CSV UTF-8“); direktes .xlsx folgt mit dem Backoffice. Max. 5000 Zeilen je Datei. |
 | 2026-11-03 | T-108 (PR #5) | erledigt (von Claude umgesetzt) | CI 18/18 grün. Lücke bei gemischten Filialen (RLS verbirgt fremde Zuordnungen) während der Umsetzung durch CI gefunden und behoben. |
 | 2026-11-03 | T-105 (PR #6) | erledigt (von Claude umgesetzt) | CI 19/19 grün beim ersten Lauf. Dokumente als HTML statt PDF (Arabisch), begründet in PR. |
 | 2026-11-03 | T-103 (PR #4) | erledigt (Befunde von Claude behoben) | CI 21/21 inkl. App-Typprüfung. Gerätetest offen (T-117). App-Plan T-109–T-117 angelegt. |
