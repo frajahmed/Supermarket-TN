@@ -8,6 +8,7 @@ import { getApi } from '../../src/device/session';
 import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { CenteredMessage, LoadingScreen, PrimaryButton, SecondaryButton } from '../../src/ui/components';
 
 interface StockItem {
   productId: string; sku: string; name: LocalizedName; unit: string; salePrice: string | null;
@@ -50,8 +51,8 @@ export default function ProductsScreen() {
   // Beim Zurückkehren (z. B. nach dem Anlegen) neu laden
   useFocusEffect(useCallback(() => { void load(true); }, [load]));
 
-  if (!profile) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
-  if (!storeId) return <SafeAreaView style={ui.safe}><View style={ui.center}><Text>{t('home.noStore')}</Text></View></SafeAreaView>;
+  if (!profile) return <LoadingScreen />;
+  if (!storeId) return <CenteredMessage text={t('home.noStore')} />;
 
   return (
     <SafeAreaView style={ui.safe}>
@@ -66,18 +67,14 @@ export default function ProductsScreen() {
             <View style={ui.row}>
               <TextInput value={q} onChangeText={setQ} placeholder={t('products.search')} style={ui.input}
                 returnKeyType="search" onSubmitEditing={() => void load(true)} autoCorrect={false} />
-              <Pressable style={ui.primary} onPress={() => router.push('/products/scan' as never)} accessibilityRole="button">
-                <Text style={ui.primaryText}>{t('products.scan')}</Text>
-              </Pressable>
+              <PrimaryButton label={t('products.scan')} onPress={() => router.push('/products/scan' as never)} />
             </View>
             <View style={ui.row}>
               <Pressable style={[ui.chip, lowOnly && ui.chipActive]} onPress={() => setLowOnly((v) => !v)} accessibilityState={{ selected: lowOnly }}>
                 <Text style={lowOnly ? ui.chipActiveText : undefined}>{t('products.lowOnly')}</Text>
               </Pressable>
               {canWrite('product.write') ? (
-                <Pressable style={ui.secondary} onPress={() => router.push('/products/edit' as never)}>
-                  <Text style={ui.secondaryText}>{t('products.create')}</Text>
-                </Pressable>
+                <SecondaryButton label={t('products.create')} onPress={() => router.push('/products/edit' as never)} />
               ) : null}
             </View>
             {error ? <Text style={ui.error} accessibilityRole="alert">{error}</Text> : null}
@@ -104,7 +101,7 @@ export default function ProductsScreen() {
         }}
         ListEmptyComponent={busy ? null : <Text style={ui.muted}>{t('products.empty')}</Text>}
         ListFooterComponent={busy ? <ActivityIndicator /> : cursor ? (
-          <Pressable style={ui.secondary} onPress={() => void load(false, cursor)}><Text style={ui.secondaryText}>{t('products.more')}</Text></Pressable>
+          <SecondaryButton label={t('products.more')} onPress={() => void load(false, cursor)} />
         ) : null}
       />
     </SafeAreaView>

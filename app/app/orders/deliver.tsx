@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../src/core/api-client';
 import { applyScan, deliveryBody, initialPick, remaining, sendOnce, type Order } from '../../src/core/orders';
@@ -11,6 +11,7 @@ import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { BarcodeScanner } from '../../src/ui/BarcodeScanner';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { BackLink, LoadingScreen, Messages, PrimaryButton, ScreenScroll } from '../../src/ui/components';
 
 export default function DeliverScreen() {
   const { t } = useTranslation();
@@ -68,35 +69,31 @@ export default function DeliverScreen() {
   }
 
   if (!order || !profile) {
-    return <SafeAreaView style={ui.safe}><View style={ui.center}>{message ? <Text style={ui.error}>{message}</Text> : <ActivityIndicator />}</View></SafeAreaView>;
+    return <LoadingScreen error={message} />;
   }
   const writable = canWrite('sales.order');
 
   return (
-    <SafeAreaView style={ui.safe}>
-      <ScrollView contentContainerStyle={ui.container} keyboardShouldPersistTaps="handled">
-        <Text style={ui.title}>{t('orders.deliver')} · {order.number}</Text>
-        <LicenseBanner profile={profile} />
-        <Text style={ui.muted}>{t('orders.pickHint')}</Text>
-        {scanning
-          ? <BarcodeScanner onCode={(c) => void onScan(c)} onClose={() => setScanning(false)} hint={t('orders.scanToPick')} />
-          : <Pressable style={ui.primary} onPress={() => setScanning(true)}><Text style={ui.primaryText}>{t('orders.pickByScan')}</Text></Pressable>}
-        {order.lines.filter((l) => remaining(l) !== '0').map((l) => (
-          <View key={l.id} style={[ui.card, lastLine === l.id && { borderColor: '#176b87', borderWidth: 2 }]}>
-            <Text style={{ fontWeight: '700' }}>{productLabel(l.productName, language)}</Text>
-            <View style={ui.row}>
-              <TextInput value={pick[l.id] ?? ''} onChangeText={(v) => setPick((p) => ({ ...p, [l.id]: v }))} keyboardType="decimal-pad"
-                style={[ui.input, { flexGrow: 0, minWidth: 90 }]} accessibilityLabel={t('orders.quantity')} />
-              <Text>/ {remaining(l)} {t(`units.${l.unit}`)}</Text>
-            </View>
+    <ScreenScroll>
+      <Text style={ui.title}>{t('orders.deliver')} · {order.number}</Text>
+      <LicenseBanner profile={profile} />
+      <Text style={ui.muted}>{t('orders.pickHint')}</Text>
+      {scanning
+        ? <BarcodeScanner onCode={(c) => void onScan(c)} onClose={() => setScanning(false)} hint={t('orders.scanToPick')} />
+        : <PrimaryButton label={t('orders.pickByScan')} onPress={() => setScanning(true)} />}
+      {order.lines.filter((l) => remaining(l) !== '0').map((l) => (
+        <View key={l.id} style={[ui.card, lastLine === l.id && { borderColor: '#176b87', borderWidth: 2 }]}>
+          <Text style={{ fontWeight: '700' }}>{productLabel(l.productName, language)}</Text>
+          <View style={ui.row}>
+            <TextInput value={pick[l.id] ?? ''} onChangeText={(v) => setPick((p) => ({ ...p, [l.id]: v }))} keyboardType="decimal-pad"
+              style={[ui.input, { flexGrow: 0, minWidth: 90 }]} accessibilityLabel={t('orders.quantity')} />
+            <Text>/ {remaining(l)} {t(`units.${l.unit}`)}</Text>
           </View>
-        ))}
-        {message ? <Text style={ui.error} accessibilityRole="alert">{message}</Text> : null}
-        <Pressable style={[ui.primary, (!writable || busy) && ui.disabled]} disabled={!writable || busy} onPress={() => void submit()}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={ui.primaryText}>{t('orders.bookDelivery')}</Text>}
-        </Pressable>
-        <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
-      </ScrollView>
-    </SafeAreaView>
+        </View>
+      ))}
+      <Messages error={message} />
+      <PrimaryButton label={t('orders.bookDelivery')} onPress={() => void submit()} busy={busy} disabled={!writable} />
+      <BackLink />
+    </ScreenScroll>
   );
 }

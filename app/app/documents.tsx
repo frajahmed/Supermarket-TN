@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { formatTndMinor } from '../src/core/money';
 import { documentFileName, documentPath, type DocumentKind } from '../src/core/orders';
 import { getApi } from '../src/device/session';
 import { useLanguage } from '../src/i18n/LanguageProvider';
 import { ui } from '../src/ui/styles';
+import { BackLink, Messages, PrimaryButton, ScreenScroll, SecondaryButton } from '../src/ui/components';
 
 interface InvoiceSummary { number: string; customerName: string; issueDate: string | null; dueDate: string | null;
   netTotal: string; taxTotal: string; stampDuty: string; grossTotal: string; isCreditNote: boolean }
@@ -60,33 +61,27 @@ export default function DocumentScreen() {
 
   const money = (v: string) => `${formatTndMinor(v, language)} TND`;
   return (
-    <SafeAreaView style={ui.safe}>
-      <ScrollView contentContainerStyle={ui.container}>
-        <Text style={ui.title}>{params.kind === 'invoice' ? t('orders.invoice') : params.kind === 'statement' ? t('payments.statement') : params.kind === 'receipt' ? t('pos.receipt') : t('orders.deliveryNote')} {number}</Text>
-        {summary ? (
-          <View style={ui.card}>
-            <Text style={{ fontWeight: '700' }}>{summary.customerName}</Text>
-            <Text>{summary.issueDate ?? ''}{summary.dueDate ? ` → ${summary.dueDate}` : ''}</Text>
-            <Text>{t('orders.net')}: {money(summary.netTotal)}</Text>
-            <Text>{t('products.tax')}: {money(summary.taxTotal)}</Text>
-            <Text>{t('orders.stamp')}: {money(summary.stampDuty)}</Text>
-            <Text style={{ fontWeight: '700' }}>{t('orders.gross')}: {money(summary.grossTotal)}</Text>
-          </View>
-        ) : null}
-        {!html && !message ? <ActivityIndicator /> : null}
-        {html ? (
-          <View style={ui.row}>
-            <Pressable style={[ui.primary, busy && ui.disabled]} disabled={busy} onPress={() => void print()}>
-              <Text style={ui.primaryText}>{t('orders.print')}</Text>
-            </Pressable>
-            <Pressable style={[ui.secondary, busy && ui.disabled]} disabled={busy} onPress={() => void share()}>
-              <Text style={ui.secondaryText}>{t('orders.sharePdf')}</Text>
-            </Pressable>
-          </View>
-        ) : null}
-        {message ? <Text style={ui.error} accessibilityRole="alert">{message}</Text> : null}
-        <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
-      </ScrollView>
-    </SafeAreaView>
+    <ScreenScroll>
+      <Text style={ui.title}>{params.kind === 'invoice' ? t('orders.invoice') : params.kind === 'statement' ? t('payments.statement') : params.kind === 'receipt' ? t('pos.receipt') : t('orders.deliveryNote')} {number}</Text>
+      {summary ? (
+        <View style={ui.card}>
+          <Text style={{ fontWeight: '700' }}>{summary.customerName}</Text>
+          <Text>{summary.issueDate ?? ''}{summary.dueDate ? ` → ${summary.dueDate}` : ''}</Text>
+          <Text>{t('orders.net')}: {money(summary.netTotal)}</Text>
+          <Text>{t('products.tax')}: {money(summary.taxTotal)}</Text>
+          <Text>{t('orders.stamp')}: {money(summary.stampDuty)}</Text>
+          <Text style={{ fontWeight: '700' }}>{t('orders.gross')}: {money(summary.grossTotal)}</Text>
+        </View>
+      ) : null}
+      {!html && !message ? <ActivityIndicator /> : null}
+      {html ? (
+        <View style={ui.row}>
+          <PrimaryButton label={t('orders.print')} onPress={() => void print()} disabled={busy} />
+          <SecondaryButton label={t('orders.sharePdf')} onPress={() => void share()} disabled={busy} />
+        </View>
+      ) : null}
+      <Messages error={message} />
+      <BackLink />
+    </ScreenScroll>
   );
 }

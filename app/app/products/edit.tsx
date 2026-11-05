@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Switch, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../src/core/api-client';
 import {
@@ -10,6 +10,7 @@ import {
 import { getApi } from '../../src/device/session';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { BackLink, ChipGroup, Field, LoadingScreen, Messages, PrimaryButton, ScreenScroll } from '../../src/ui/components';
 
 const EMPTY: ProductForm = {
   sku: '', nameFr: '', nameAr: '', nameEn: '', unit: 'piece', salePrice: '', purchasePrice: '',
@@ -86,60 +87,41 @@ export default function ProductEditScreen() {
     }
   }
 
-  if (loading || !profile) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
+  if (loading || !profile) return <LoadingScreen />;
   const writable = canWrite('product.write');
   const field = (key: keyof ProductForm, label: string, extra: object = {}) => (
-    <View style={{ gap: 4 }}>
-      <Text>{label}</Text>
-      <TextInput value={String(form[key])} onChangeText={(v) => set(key, v as never)} style={ui.input} editable={writable} {...extra} />
-      {errors[key] ? <Text style={ui.error}>{t(`products.errors.${errors[key]}`)}</Text> : null}
-    </View>
+    <Field label={label} value={String(form[key])} onChange={(v) => set(key, v as never)} editable={writable}
+      error={errors[key] ? t(`products.errors.${errors[key]}`) : null} {...extra} />
   );
 
   return (
-    <SafeAreaView style={ui.safe}>
-      <ScrollView contentContainerStyle={ui.container} keyboardShouldPersistTaps="handled">
-        <Text style={ui.title}>{params.id ? t('products.edit') : t('products.create')}</Text>
-        <LicenseBanner profile={profile} />
-        {params.barcode ? <Text style={ui.muted}>{t('products.barcode')}: {params.barcode}</Text> : null}
-        {field('sku', t('products.sku'), { autoCapitalize: 'characters', autoCorrect: false })}
-        {field('nameFr', t('products.nameFr'))}
-        {field('nameAr', t('products.nameAr'), { textAlign: 'right' })}
-        {field('nameEn', t('products.nameEn'))}
+    <ScreenScroll>
+      <Text style={ui.title}>{params.id ? t('products.edit') : t('products.create')}</Text>
+      <LicenseBanner profile={profile} />
+      {params.barcode ? <Text style={ui.muted}>{t('products.barcode')}: {params.barcode}</Text> : null}
+      {field('sku', t('products.sku'), { autoCapitalize: 'characters', autoCorrect: false })}
+      {field('nameFr', t('products.nameFr'))}
+      {field('nameAr', t('products.nameAr'), { textAlign: 'right' })}
+      {field('nameEn', t('products.nameEn'))}
 
-        <Text>{t('products.unit')}</Text>
-        <View style={ui.row}>
-          {UNITS.map((u) => (
-            <Pressable key={u} style={[ui.chip, form.unit === u && ui.chipActive]} onPress={() => writable && set('unit', u)}>
-              <Text style={form.unit === u ? ui.chipActiveText : undefined}>{t(`units.${u}`)}</Text>
-            </Pressable>
-          ))}
-        </View>
+      <Text>{t('products.unit')}</Text>
+      <ChipGroup values={UNITS} selected={form.unit} onSelect={(u) => set('unit', u)} label={(u) => t(`units.${u}`)} disabled={!writable} />
 
-        {canEditPrices ? field('salePrice', `${t('products.salePrice')} (TND)`, { keyboardType: 'decimal-pad' }) : null}
-        {canEditPrices && showCost ? field('purchasePrice', `${t('products.purchasePrice')} (TND)`, { keyboardType: 'decimal-pad' }) : null}
+      {canEditPrices ? field('salePrice', `${t('products.salePrice')} (TND)`, { keyboardType: 'decimal-pad' }) : null}
+      {canEditPrices && showCost ? field('purchasePrice', `${t('products.purchasePrice')} (TND)`, { keyboardType: 'decimal-pad' }) : null}
 
-        <Text>{t('products.tax')}</Text>
-        <View style={ui.row}>
-          {TAX_RATES_BP.map((r) => (
-            <Pressable key={r} style={[ui.chip, form.taxRateBp === r && ui.chipActive]} onPress={() => writable && set('taxRateBp', r)}>
-              <Text style={form.taxRateBp === r ? ui.chipActiveText : undefined}>{r / 100} %</Text>
-            </Pressable>
-          ))}
-        </View>
+      <Text>{t('products.tax')}</Text>
+      <ChipGroup values={TAX_RATES_BP} selected={form.taxRateBp} onSelect={(r) => set('taxRateBp', r)} label={(r) => `${r / 100} %`} disabled={!writable} />
 
-        {field('minStock', t('products.minStock'), { keyboardType: 'decimal-pad' })}
-        <View style={ui.row}>
-          <Switch value={form.trackExpiry} onValueChange={(v) => set('trackExpiry', v)} disabled={!writable} />
-          <Text>{t('products.trackExpiry')}</Text>
-        </View>
+      {field('minStock', t('products.minStock'), { keyboardType: 'decimal-pad' })}
+      <View style={ui.row}>
+        <Switch value={form.trackExpiry} onValueChange={(v) => set('trackExpiry', v)} disabled={!writable} />
+        <Text>{t('products.trackExpiry')}</Text>
+      </View>
 
-        {message ? <Text style={ui.error} accessibilityRole="alert">{message}</Text> : null}
-        <Pressable style={[ui.primary, (!writable || busy) && ui.disabled]} disabled={!writable || busy} onPress={() => void save()}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={ui.primaryText}>{t('products.save')}</Text>}
-        </Pressable>
-        <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
-      </ScrollView>
-    </SafeAreaView>
+      <Messages error={message} />
+      <PrimaryButton label={t('products.save')} onPress={() => void save()} busy={busy} disabled={!writable} />
+      <BackLink />
+    </ScreenScroll>
   );
 }

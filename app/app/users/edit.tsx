@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../src/core/api-client';
 import { assignableRoles, userBody, type User, type UserForm, type UserFormError } from '../../src/core/users';
 import { getApi } from '../../src/device/session';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { BackLink, LoadingScreen, Messages, PrimaryButton, ScreenScroll, SecondaryButton } from '../../src/ui/components';
 
 const EMPTY: UserForm = { email: '', displayName: '', role: 'cashier', password: '', pin: '', storeIds: [], isActive: true };
 
@@ -60,83 +61,77 @@ export default function UserEditScreen() {
     void send(r.body);
   }
 
-  if (!profile || (id && !initial && !message)) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
+  if (!profile || (id && !initial && !message)) return <LoadingScreen />;
   const writable = canWrite('user.manage');
   const err = (k: keyof UserForm) => (errors[k] ? <Text style={ui.error}>{t(`users.errors.${errors[k]}`)}</Text> : null);
   const isPinRole = form.role === 'cashier' || form.role === 'stock_clerk';
 
   return (
-    <SafeAreaView style={ui.safe}>
-      <ScrollView contentContainerStyle={ui.container} keyboardShouldPersistTaps="handled">
-        <Text style={ui.title}>{id ? t('users.edit') : t('users.create')}</Text>
-        <LicenseBanner profile={profile} />
-        <Text>{t('email')}</Text>
-        <TextInput value={form.email} onChangeText={(v) => set('email', v)} style={[ui.input, id ? ui.disabled : null]} editable={!id && writable}
-          autoCapitalize="none" keyboardType="email-address" />
-        {err('email')}
-        <Text>{t('users.name')}</Text>
-        <TextInput value={form.displayName} onChangeText={(v) => set('displayName', v)} style={ui.input} editable={writable} />
-        {err('displayName')}
+    <ScreenScroll>
+      <Text style={ui.title}>{id ? t('users.edit') : t('users.create')}</Text>
+      <LicenseBanner profile={profile} />
+      <Text>{t('email')}</Text>
+      <TextInput value={form.email} onChangeText={(v) => set('email', v)} style={[ui.input, id ? ui.disabled : null]} editable={!id && writable}
+        autoCapitalize="none" keyboardType="email-address" />
+      {err('email')}
+      <Text>{t('users.name')}</Text>
+      <TextInput value={form.displayName} onChangeText={(v) => set('displayName', v)} style={ui.input} editable={writable} />
+      {err('displayName')}
 
-        <Text>{t('users.role')}</Text>
-        <View style={ui.row}>
-          {assignableRoles(profile.user.role).map((r) => (
-            <Pressable key={r} style={[ui.chip, form.role === r && ui.chipActive]} onPress={() => writable && set('role', r)}>
-              <Text style={form.role === r ? ui.chipActiveText : undefined}>{t(`role.${r}`)}</Text>
-            </Pressable>
-          ))}
-        </View>
-        {err('role')}
+      <Text>{t('users.role')}</Text>
+      <View style={ui.row}>
+        {assignableRoles(profile.user.role).map((r) => (
+          <Pressable key={r} style={[ui.chip, form.role === r && ui.chipActive]} onPress={() => writable && set('role', r)}>
+            <Text style={form.role === r ? ui.chipActiveText : undefined}>{t(`role.${r}`)}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {err('role')}
 
-        {form.role !== 'owner' ? (
-          <>
-            <Text>{t('users.stores')}</Text>
-            <View style={ui.row}>
-              {profile.stores.map((s) => {
-                const on = form.storeIds.includes(s.id);
-                return (
-                  <Pressable key={s.id} style={[ui.chip, on && ui.chipActive]}
-                    onPress={() => writable && set('storeIds', on ? form.storeIds.filter((x) => x !== s.id) : [...form.storeIds, s.id])}>
-                    <Text style={on ? ui.chipActiveText : undefined}>{s.code} · {s.name}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            {err('storeIds')}
-          </>
-        ) : null}
+      {form.role !== 'owner' ? (
+        <>
+          <Text>{t('users.stores')}</Text>
+          <View style={ui.row}>
+            {profile.stores.map((s) => {
+              const on = form.storeIds.includes(s.id);
+              return (
+                <Pressable key={s.id} style={[ui.chip, on && ui.chipActive]}
+                  onPress={() => writable && set('storeIds', on ? form.storeIds.filter((x) => x !== s.id) : [...form.storeIds, s.id])}>
+                  <Text style={on ? ui.chipActiveText : undefined}>{s.code} · {s.name}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {err('storeIds')}
+        </>
+      ) : null}
 
-        <Text>{t('password')}{id ? ` (${t('users.emptyUnchanged')})` : ''}</Text>
-        <TextInput value={form.password} onChangeText={(v) => set('password', v)} style={ui.input} secureTextEntry editable={writable} />
-        {err('password')}
-        {isPinRole ? (
-          <>
-            <Text>{t('pin')}{id ? ` (${t('users.emptyUnchanged')})` : ''}</Text>
-            <TextInput value={form.pin} onChangeText={(v) => set('pin', v)} style={ui.input} keyboardType="number-pad" secureTextEntry maxLength={8} editable={writable} />
-            {err('pin')}
-          </>
-        ) : null}
+      <Text>{t('password')}{id ? ` (${t('users.emptyUnchanged')})` : ''}</Text>
+      <TextInput value={form.password} onChangeText={(v) => set('password', v)} style={ui.input} secureTextEntry editable={writable} />
+      {err('password')}
+      {isPinRole ? (
+        <>
+          <Text>{t('pin')}{id ? ` (${t('users.emptyUnchanged')})` : ''}</Text>
+          <TextInput value={form.pin} onChangeText={(v) => set('pin', v)} style={ui.input} keyboardType="number-pad" secureTextEntry maxLength={8} editable={writable} />
+          {err('pin')}
+        </>
+      ) : null}
 
-        {id ? (
-          <>
-            <View style={ui.row}>
-              <Switch value={form.isActive} onValueChange={(v) => set('isActive', v)} disabled={!writable} />
-              <Text>{form.isActive ? t('users.active') : t('users.inactive')}</Text>
-            </View>
-            {totpConfigured ? (
-              <Pressable style={[ui.secondary, busy && ui.disabled]} disabled={!writable || busy} onPress={() => void send({ totpSecret: null })}>
-                <Text style={ui.secondaryText}>{t('users.resetTotp')}</Text>
-              </Pressable>
-            ) : null}
-          </>
-        ) : null}
+      {id ? (
+        <>
+          <View style={ui.row}>
+            <Switch value={form.isActive} onValueChange={(v) => set('isActive', v)} disabled={!writable} />
+            <Text>{form.isActive ? t('users.active') : t('users.inactive')}</Text>
+          </View>
+          {totpConfigured ? (
+            <SecondaryButton label={t('users.resetTotp')} onPress={() => void send({ totpSecret: null })} disabled={!writable || busy} />
+          ) : null}
+        </>
+      ) : null}
 
-        {message ? <Text style={ui.error} accessibilityRole="alert">{message}</Text> : null}
-        <Pressable style={[ui.primary, (!writable || busy) && ui.disabled]} disabled={!writable || busy} onPress={save}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={ui.primaryText}>{t('products.save')}</Text>}
-        </Pressable>
-        <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
-      </ScrollView>
-    </SafeAreaView>
+      <Messages error={message} />
+      <PrimaryButton label={t('products.save')} onPress={save} busy={busy} disabled={!writable} />
+      <BackLink />
+    </ScreenScroll>
   );
 }

@@ -73,8 +73,7 @@ export default function HomeScreen() {
             </Pressable>
           ))}
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </ScreenScroll>
   );
 }
 
