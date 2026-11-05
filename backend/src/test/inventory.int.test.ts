@@ -1103,3 +1103,41 @@ test('T-115: Kasse – Bonnummern lückenlos bei gleichzeitigen Verkäufen, Raba
   assert.match(await doc.text(), /ANNULATION du ticket N° \d+/u);
   assert.equal((await api(`/pos/sales?storeId=${STORE_A2}`, cashier)).status, 403);
 });
+
+test('T-116: Geräte – Liste, Filiale zuordnen, Sperre wirkt sofort, eigenes Gerät nicht sperrbar', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const manager = await token(MANAGER_A, T_A, 'manager');
+  const PHONE = randomUUID();
+  await admin.query(`INSERT INTO app.devices (id, tenant_id, name, kind, last_seen_at) VALUES ($1, $2, 'Handy Lager', 'phone', now())`, [PHONE, T_A]);
+  const phoneToken = signJwt({ sub: CLERK_A, tid: T_A, role: 'stock_clerk', did: PHONE }, storeJwtKey, 900);
+
+  const ownerList = await api('/devices', owner);
+  assert.equal(ownerList.status, 200);
+  assert.ok(ownerList.body.items.some((d: { id: string; isCurrent: boolean }) => d.id === deviceId && d.isCurrent));
+  assert.ok(ownerList.body.items.some((d: { id: string }) => d.id === PHONE));
+  assert.ok(!(await api('/devices', manager)).body.items.some((d: { id: string }) => d.id === PHONE), 'ohne Filiale nur für Inhaber sichtbar');
+
+  // Filiale zuordnen: danach sieht der Filialleiter das Gerät; Grenzen der Rollen
+  const assigned = await api(`/devices/${PHONE}`, owner, { method: 'PATCH', body: JSON.stringify({ storeId: STORE_A1, name: 'Handy Dépôt' }) });
+  assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
+  assert.equal(assigned.body.storeName, 'A1');
+  assert.ok((await api('/devices', manager)).body.items.some((d: { id: string }) => d.id === PHONE));
+  assert.equal((await api(`/devices/${PHONE}`, manager, { method: 'PATCH', body: JSON.stringify({ storeId: null }) })).status, 403);
+  assert.equal((await api(`/devices/${PHONE}`, manager, { method: 'PATCH', body: JSON.stringify({ storeId: STORE_A2 }) })).status, 403);
+  assert.equal((await api('/devices', await token(CASHIER_A, T_A, 'cashier'))).status, 403);
+
+  // Sperre wirkt sofort auf ein noch gültiges Access-Token
+  assert.equal((await api('/me', phoneToken)).status, 200);
+  const revoked = await api(`/devices/${PHONE}/revoke`, manager, { method: 'POST', body: '{}' });
+  assert.equal(revoked.status, 200, JSON.stringify(revoked.body));
+  assert.ok(revoked.body.revokedAt);
+  const after = await api('/me', phoneToken);
+  assert.equal(after.status, 401);
+  assert.match(after.body.message, /gesperrt/u);
+  assert.equal((await admin.query(`SELECT count(*)::int AS n FROM app.audit_log WHERE action = 'device.revoke' AND entity_id = $1`, [PHONE])).rows[0].n, 1);
+  assert.equal((await api(`/devices/${PHONE}/revoke`, manager, { method: 'POST', body: '{}' })).status, 200, 'erneut sperren ist harmlos');
+
+  assert.equal((await api(`/devices/${deviceId}/revoke`, owner, { method: 'POST', body: '{}' })).status, 409, 'eigenes Gerät');
+  assert.equal((await api(`/devices/${PHONE}/revoke`, await token(OWNER_B, T_B, 'owner'), { method: 'POST', body: '{}' })).status, 404);
+  assert.equal((await api('/me', owner)).status, 200, 'eigenes Gerät bleibt nutzbar');
+});

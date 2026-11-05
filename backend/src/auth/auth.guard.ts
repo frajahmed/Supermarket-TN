@@ -76,10 +76,13 @@ export class AuthGuard implements CanActivate {
   }
 
   async buildContext(claims: AccessTokenClaims): Promise<RequestContext> {
-    const storeIds = await this.db.system(async (c) => {
-      const res = await c.query<{ ids: string[] }>('SELECT auth.user_store_ids($1, $2) AS ids', [claims.tid, claims.sub]);
-      return res.rows[0]?.ids ?? [];
+    const { storeIds, revoked } = await this.db.system(async (c) => {
+      const res = await c.query<{ ids: string[]; revoked: boolean }>(
+        'SELECT auth.user_store_ids($1, $2) AS ids, auth.device_is_revoked($1, $3) AS revoked', [claims.tid, claims.sub, claims.did]);
+      return { storeIds: res.rows[0]?.ids ?? [], revoked: res.rows[0]?.revoked ?? false };
     });
+    // Lokale Sperre durch den Inhaber wirkt sofort, nicht erst nach Ablauf des Access-Tokens.
+    if (revoked) throw new UnauthorizedException('Gerät wurde gesperrt');
     return { tenantId: claims.tid, userId: claims.sub, role: claims.role, storeIds, deviceId: claims.did };
   }
 }
