@@ -1,7 +1,4 @@
-/**
- * Kunden (Großhandel) in der App (T-111) – reine Logik, mit Node getestet.
- * Die Prüfungen spiegeln das Backend (customers.dto.ts); der Server prüft trotzdem.
- */
+// Prüfungen spiegeln backend/src/customers/customers.dto.ts; der Server prüft trotzdem.
 import { moneyInputFromMinor, parseMoneyInput } from './products.ts';
 
 export type CustomerType = 'business' | 'individual';
@@ -57,10 +54,7 @@ export function formFromCustomer(c: Customer): CustomerForm {
 
 const orNull = (v: string) => (v.trim() ? v.trim() : null);
 
-/**
- * Formular → Body für POST/PATCH /customers. Leeres Kreditlimit = kein Limit (null).
- * `canEditCredit`: Kreditlimit und Zahlungsziel nur senden, wenn der Benutzer sie sehen darf.
- */
+// Leeres Kreditlimit bedeutet: kein Limit (null).
 export function customerBodyFromForm(f: CustomerForm, opts: { canEditCredit: boolean }):
   { ok: true; body: Record<string, unknown> } | { ok: false; errors: Partial<Record<keyof CustomerForm, CustomerFormError>> } {
   const errors: Partial<Record<keyof CustomerForm, CustomerFormError>> = {};
@@ -90,7 +84,6 @@ export function customerBodyFromForm(f: CustomerForm, opts: { canEditCredit: boo
   return Object.keys(errors).length ? { ok: false, errors } : { ok: true, body };
 }
 
-/** 400-Antwort des Servers (Zod-Issues) auf Formularfelder abbilden. */
 export function fieldErrorsFromServer(body: unknown): Partial<Record<keyof CustomerForm, CustomerFormError>> {
   const issues = (body as { issues?: Array<{ path?: unknown[] }> } | null)?.issues ?? [];
   const out: Partial<Record<keyof CustomerForm, CustomerFormError>> = {};
@@ -107,7 +100,7 @@ export function fieldErrorsFromServer(body: unknown): Partial<Record<keyof Custo
 
 export type CreditState = 'none' | 'ok' | 'near' | 'over';
 
-/** Ampel für das Kreditlimit: ab 80 % Auslastung „near“. Rechnet mit BigInt (Millimes). */
+/** „near“ ab 80 % Auslastung des Kreditlimits. */
 export function creditState(openBalance: string, creditLimit: string | null): CreditState {
   if (creditLimit === null) return 'none';
   const open = BigInt(openBalance), limit = BigInt(creditLimit);
@@ -115,7 +108,6 @@ export function creditState(openBalance: string, creditLimit: string | null): Cr
   return open * 10n >= limit * 8n && limit > 0n ? 'near' : 'ok';
 }
 
-/** Verfügbarer Kreditrahmen (nie negativ), null ohne Limit. */
 export function availableCredit(openBalance: string, creditLimit: string | null): string | null {
   if (creditLimit === null) return null;
   const rest = BigInt(creditLimit) - BigInt(openBalance);

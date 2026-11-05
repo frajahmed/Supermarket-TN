@@ -98,14 +98,7 @@ export class InventoryService {
     }
   }
 
-  /**
-   * GET /sync/pull – alles seit dem letzten Cursor einer Filiale.
-   * Der Journal-Id dient als monotoner Cursor; das Gerät speichert `nextCursor`.
-   */
-  /**
-   * Charge über Nummer + MHD finden; bei Zugang (Menge > 0) anlegen. Advisory-Lock verhindert,
-   * dass zwei Geräte gleichzeitig dieselbe Charge doppelt anlegen.
-   */
+  // Advisory-Lock: zwei Geräte dürfen dieselbe Charge nicht gleichzeitig doppelt anlegen.
   private async resolveLot(db: PoolClient, ctx: RequestContext, m: MovementInput): Promise<string | null> {
     const lot = m.lot!;
     await db.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
@@ -126,6 +119,10 @@ export class InventoryService {
     return null;
   }
 
+  /**
+   * GET /sync/pull – alles seit dem letzten Cursor einer Filiale.
+   * Der Journal-Id dient als monotoner Cursor; das Gerät speichert `nextCursor`.
+   */
   async pull(ctx: RequestContext, q: PullQuery) {
     return this.db.withTenant(ctx, async (db) => {
       const moves = await db.query(
@@ -176,10 +173,7 @@ export class InventoryService {
     });
   }
 
-  /**
-   * Bestandsliste einer Filiale (T-110): Produkt, Bestand, Mindestbestand, nächstes MHD.
-   * Suche über SKU, Namen (ar/fr/en) und exakten Barcode. Einkaufspreis nur mit report.finance.
-   */
+  // Einkaufspreis nur mit report.finance (T-107).
   async stockList(ctx: RequestContext, storeId: string, q: StockQuery) {
     const cursor = decodeStockCursor(q.cursor);
     const search = q.q ?? null;

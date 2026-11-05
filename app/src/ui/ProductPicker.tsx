@@ -10,11 +10,9 @@ import { ui } from './styles';
 
 export interface PickedProduct {
   productId: string; label: string; unit: string;
-  /** gescanntes Gebinde (Karton) – sonst Basiseinheit */
   packaging: { id: string; label: string; factor: string } | null;
 }
 
-/** Produkt per Suche (Bestandsliste der Filiale) oder Scan wählen. */
 export function ProductPicker({ storeId, onPick }: { storeId: string; onPick: (p: PickedProduct) => void }) {
   const { t } = useTranslation();
   const { language } = useLanguage();

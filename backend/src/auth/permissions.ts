@@ -32,7 +32,6 @@ export function hasPermission(role: UserRole, permission: Permission): boolean {
   return ROLE_PERMISSIONS[role].has(permission);
 }
 
-/** Alle Rechte einer Rolle, sortiert – für GET /me (die App blendet danach Bereiche ein/aus). */
 export function permissionsFor(role: UserRole): Permission[] {
   return [...ROLE_PERMISSIONS[role]].sort();
 }

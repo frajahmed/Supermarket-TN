@@ -1,7 +1,3 @@
-/**
- * Kasse in der App (T-115) – Warenkorb, Rabatt, Zahlung, Rückgeld. Reine Logik, mit Node getestet.
- * Rundung exakt wie app.complete_sale (round half up auf Millimes), damit die Vorschau dem Bon entspricht.
- */
 import { fromMilli, isQuantity, toMilli } from './orders.ts';
 
 export interface CartLine {
@@ -20,7 +16,7 @@ export function addToCart(cart: CartLine[], item: Omit<CartLine, 'quantity' | 'd
   return [...cart, { ...item, quantity, discountBp: 0 }];
 }
 
-/** round(a / b) für a ≥ 0 – kaufmännisch (half up) wie PostgreSQL round(numeric). */
+/** Half-up wie PostgreSQL round(numeric) – die Vorschau muss exakt dem Bon entsprechen. */
 function divRound(a: bigint, b: bigint): bigint {
   return a >= 0n ? (2n * a + b) / (2n * b) : -((2n * -a + b) / (2n * b));
 }
@@ -40,7 +36,6 @@ export function cartTotals(cart: CartLine[]): { total: string; discount: string;
   return { total: total.toString(), discount: discount.toString(), items: cart.length };
 }
 
-/** „10“ → 1000, „2,5“ → 250 Basispunkte; null bei ungültig. */
 export function parsePercent(input: string): number | null {
   const v = input.trim().replace(',', '.');
   if (!v) return 0;
@@ -55,10 +50,7 @@ export function needsApproval(cart: CartLine[], limitBp: number, canApprove: boo
 
 export type PayError = 'emptyCart' | 'invalidQuantity' | 'invalidAmount' | 'notEnough' | 'cardTooHigh';
 
-/**
- * Zahlung planen: Karte höchstens Bonbetrag, Rückgeld nur aus Bargeld.
- * `cash` ist der gegebene Betrag (Rückgeld zählt der Server nicht als Einnahme).
- */
+// Rückgeld nur aus Bargeld; die Karte darf den Bonbetrag nicht übersteigen.
 export function planPayment(totalMinor: string, cashInput: string, cardInput: string, parse: (s: string) => string | null):
   { ok: true; payments: Array<{ method: 'cash' | 'card'; amount: string }>; change: string } | { ok: false; error: PayError } {
   const total = BigInt(totalMinor);
@@ -74,7 +66,6 @@ export function planPayment(totalMinor: string, cashInput: string, cardInput: st
   return { ok: true, payments, change: (c + k - total).toString() };
 }
 
-/** Body für POST /pos/sales (ohne clientOpId). */
 export function saleBody(storeId: string, cart: CartLine[], payments: Array<{ method: string; amount: string }>,
   startedAt: Date, approval?: { email: string; secret: string }):
   { ok: true; body: Record<string, unknown> } | { ok: false; error: PayError; productId?: string } {
@@ -87,7 +78,6 @@ export function saleBody(storeId: string, cart: CartLine[], payments: Array<{ me
   } };
 }
 
-/** Schnelltasten für Bargeld: passend, auf 1/5/10/20/50 TND aufgerundet (ohne Duplikate). */
 export function cashSuggestions(totalMinor: string): string[] {
   const t = BigInt(totalMinor);
   if (t <= 0n) return [];

@@ -1,10 +1,7 @@
 import { z } from 'zod';
 
-/**
- * Matricule fiscal (Tunesien): 7 Ziffern + Kontrollbuchstabe, optional gefolgt von
- * TVA-Code, Kategorie und Betriebsnummer (z. B. 1234567A/M/A/000 oder 3333333C/A/000).
- * Gespeichert wird in Großbuchstaben ohne Leerzeichen.
- */
+// Matricule fiscal: 7 Ziffern + Kontrollbuchstabe, optional TVA-Code, Kategorie und Betriebsnummer
+// (1234567A/M/A/000). Gespeichert in Großbuchstaben ohne Leerzeichen.
 export const TAX_ID_MESSAGE = 'Matricule fiscal ist für Geschäftskunden Pflicht (Format z. B. 1234567A/M/A/000)';
 export const TAX_ID_FORMAT_MESSAGE = 'Matricule fiscal ungültig – erwartet 7 Ziffern und einen Buchstaben, z. B. 1234567A/M/A/000';
 
@@ -71,7 +68,7 @@ export type CustomerQuery = z.infer<typeof CustomerQuery>;
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u, 'Datum als JJJJ-MM-TT');
 
-/** POST /customers/:id/payments (T-114). Betrag in Millimes. */
+/** Betrag in Millimes. */
 export const PaymentCreate = z.object({
   amount: z.string().regex(/^[1-9]\d{0,14}$/u, 'Betrag in Millimes, größer als 0'),
   method: z.enum(['cash', 'cheque', 'transfer', 'traite', 'card', 'other']),

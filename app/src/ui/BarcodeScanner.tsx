@@ -5,10 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { normalizeScannedCode, SCAN_TYPES } from '../core/products';
 import { ui } from './styles';
 
-/**
- * Eingebettete Kamera für Erfassung und Kommissionierung. Meldet jeden Code nur einmal pro
- * 1,5 s (die Kamera liefert denselben Code mehrmals pro Sekunde).
- */
+// Die Kamera meldet denselben Code mehrmals pro Sekunde – daher 1,5 s Sperre je Code.
 export function BarcodeScanner({ onCode, onClose, hint }: {
   onCode: (code: string, type: string) => void; onClose: () => void; hint?: string;
 }) {

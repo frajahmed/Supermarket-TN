@@ -1,7 +1,4 @@
-/**
- * Kontoauszug (relevé de compte) – zweisprachig Französisch/Arabisch, HTML für Druck/PDF (T-114).
- * Gleiches Prinzip wie sales-document.ts: Rohwerte als data-Attribute, damit Tests die Summen prüfen.
- */
+// Rohwerte als data-Attribute, damit Tests die gedruckten Summen prüfen (wie sales-document.ts).
 import { escapeHtml, formatMinor } from './sales-document.ts';
 
 export type LedgerKind = 'invoice' | 'credit_note' | 'payment' | 'payment_reversal';

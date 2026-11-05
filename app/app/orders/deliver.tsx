@@ -12,7 +12,6 @@ import { BarcodeScanner } from '../../src/ui/BarcodeScanner';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
-/** Kommissionierung und Lieferung (T-112): Mengen je Position, per Scan zählen, Teillieferung erlaubt. */
 export default function DeliverScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();
@@ -58,7 +57,6 @@ export default function DeliverScreen() {
     setBusy(true); setMessage('');
     try {
       const api = await getApi();
-      // Netzabbruch: erneutes Tippen sendet dieselbe clientOpId -> der Server bucht nur einmal
       await sendOnce(secureStore, `delivery:${order.id}`, check.body.lines, newOpId, (opId) =>
         api.post(`/api/v1/sales-orders/${order.id}/deliveries`, { ...check.body, clientOpId: opId }));
       router.back();

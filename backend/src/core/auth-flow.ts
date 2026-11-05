@@ -183,11 +183,7 @@ export class AuthFlow {
     };
   }
 
-  /**
-   * Freigabe an der Kasse (T-115): Inhaber oder Filialleiter bestätigt mit Passwort (oder PIN, falls
-   * gesetzt) auf dem Gerät des Kassierers. Fehlversuche zählen wie beim Login (Sperre nach 5).
-   * Liefert die Benutzer-ID des Freigebenden.
-   */
+  // Rabattfreigabe an der Kasse: Fehlversuche zählen wie beim Login (Sperre nach 5).
   async verifyApprover(input: { tenantId: string; email: string; secret: string; deviceId: string;
     roles: readonly Role[] }): Promise<string> {
     const user = await this.deps.repo.loginCandidate(input.email.trim());

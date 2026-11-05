@@ -52,7 +52,6 @@ export class SalesService {
     });
   }
 
-  /** Auftragsliste, neueste zuerst; Filter Status/Kunde/Filiale; Cursor über (created_at, id). */
   listOrders(ctx: RequestContext, q: SalesOrderQuery) {
     const c = decodeCursor(q.cursor);
     return this.run(ctx, async (db) => {
@@ -70,7 +69,6 @@ export class SalesService {
     });
   }
 
-  /** Ausgestellte Rechnungen und Gutschriften, neueste zuerst. */
   listInvoices(ctx: RequestContext, q: InvoiceQuery) {
     const c = decodeCursor(q.cursor);
     return this.run(ctx, async (db) => {

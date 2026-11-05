@@ -1,6 +1,5 @@
 import { StyleSheet } from 'react-native';
 
-/** Gemeinsame Stile der Fachbildschirme – Bildschirme bleiben dadurch kurz. */
 export const ui = StyleSheet.create({
   safe: { flex: 1 },
   container: { padding: 16, gap: 12 },

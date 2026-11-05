@@ -11,7 +11,6 @@ import { DbService } from '../db/db.service';
 import { assertStoreAccess } from '../inventory/inventory.controller';
 import { SaleCreate, SaleQuery, SaleVoid } from './pos.dto';
 
-/** Dünne Schicht über app.complete_sale / app.void_sale (db/010_pos.sql). */
 @Injectable()
 export class PosService {
   constructor(private readonly db: DbService, private readonly auth: AuthFlowProvider) {}

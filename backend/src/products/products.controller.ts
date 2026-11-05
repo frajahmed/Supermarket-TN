@@ -26,7 +26,6 @@ export class ProductsController {
     return this.products.byBarcode(ctx, code);
   }
 
-  /** Produktdetail mit Barcodes, Gebinden und – mit storeId – Bestand und Chargen (T-110). */
   @Get(':id')
   @RequirePermission('stock.read')
   detail(

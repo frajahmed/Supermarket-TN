@@ -6,7 +6,6 @@ import { licenseAllowsWrite, licenseBannerColor, type Profile } from '../core/ho
 import { licenseBannerKey } from '../core/license';
 import { currentStoreId, loadProfile } from '../device/session';
 
-/** Profil, Rechte und Filiale für einen Bildschirm. `canWrite` berücksichtigt den Lizenzstatus. */
 export function useProfile() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [failed, setFailed] = useState(false);
@@ -28,7 +27,6 @@ export function useProfile() {
   };
 }
 
-/** Lizenzbanner (gelb = Warnung, rot = nur Lesen); bei aktiver Lizenz unsichtbar. */
 export function LicenseBanner({ profile }: { profile: Profile | null }) {
   const { t } = useTranslation();
   if (!profile) return null;

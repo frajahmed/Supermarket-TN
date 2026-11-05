@@ -1,7 +1,3 @@
-/**
- * Lager in der App (T-113): Wareneingang, Inventur, Verlust – Bewegungen für POST /sync/push.
- * Reine Logik, mit Node getestet. Mengen exakt in Tausendsteln.
- */
 import { ApiError } from './api-client.ts';
 import { fromMilli, isQuantity, toMilli, type KeyValueStore } from './orders.ts';
 
@@ -19,7 +15,7 @@ export function isIsoDate(v: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
 }
 
-/** „31/12/2027“ oder „31.12.2027“ (wie auf der Packung) → „2027-12-31“. */
+/** Datumsformate wie auf der Packung: 31/12/2027, 31.12.2027 oder 2027-12-31. */
 export function parseDateInput(input: string): string | null {
   const v = input.trim();
   if (isIsoDate(v)) return v;
@@ -29,7 +25,7 @@ export function parseDateInput(input: string): string | null {
   return isIsoDate(iso) ? iso : null;
 }
 
-/** Wareneingang: Gebinde × Faktor = Basismenge; MHD Pflicht, wenn das Produkt es verlangt. */
+/** MHD ist Pflicht, wenn das Produkt es verlangt (trackExpiry). */
 export function receiptMovement(i: {
   storeId: string; productId: string; packs: string; factor: string; packaged: boolean; trackExpiry: boolean;
   expiry: string; lotNumber: string; clientOpId: string; now: Date;
@@ -54,10 +50,7 @@ export function receiptMovement(i: {
 
 export interface CountEntry { productId: string; expected: string; counted: string }
 
-/**
- * Inventur: Differenz = gezählt − Bestand laut System, gebucht als `inventory_count` mit Vorzeichen.
- * Nicht gezählte Positionen (leer) und Positionen ohne Differenz entfallen.
- */
+/** Differenz = gezählt − Systembestand; leere und unveränderte Positionen entfallen. */
 export function countMovements(storeId: string, entries: CountEntry[], newId: () => string, now: Date):
   { ok: true; movements: Movement[]; counted: number } | { ok: false; error: WarehouseError; productId?: string } {
   const movements: Movement[] = [];
@@ -78,7 +71,7 @@ export function countMovements(storeId: string, entries: CountEntry[], newId: ()
 export const LOSS_REASONS = ['expired', 'damaged', 'theft', 'other'] as const;
 export type LossReason = (typeof LOSS_REASONS)[number];
 
-/** Verlust: Begründung Pflicht (wie der Server); „Sonstiges“ verlangt einen Freitext. */
+/** Begründung ist Pflicht (wie im Server); „Sonstiges“ braucht zusätzlich einen Freitext. */
 export function lossMovement(i: {
   storeId: string; productId: string; quantity: string; reason: LossReason | null; note: string; lotId?: string;
   clientOpId: string; now: Date;
@@ -103,11 +96,7 @@ export function summarize(results: PushResult[]) {
   };
 }
 
-/**
- * Stapel genau einmal senden: Die Bewegungen (mit ihren clientOpIds) werden VOR dem Senden
- * gespeichert. Nach Netzabbruch sendet ein erneuter Versuch mit gleichem Inhalt dieselben
- * Bewegungen – der Server meldet sie dann als „duplicate“ statt doppelt zu buchen.
- */
+// Wie sendOnce: nach Netzabbruch gehen dieselben Bewegungen mit denselben clientOpIds erneut raus.
 export async function pushOnce(store: KeyValueStore, intent: string, content: unknown, build: () => Movement[],
   send: (movements: Movement[]) => Promise<PushResult[]>): Promise<PushResult[]> {
   const key = `stn.pending-push.${intent}`;

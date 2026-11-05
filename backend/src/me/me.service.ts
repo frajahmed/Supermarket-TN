@@ -29,7 +29,6 @@ export class MeService {
     private readonly licensing: LicensingService,
   ) {}
 
-  /** Profil für die App: wer bin ich, was darf ich, in welchen Filialen, wie steht die Lizenz. */
   async profile(ctx: RequestContext) {
     return this.db.withTenant(ctx, async (db) => {
       const u = await db.query(

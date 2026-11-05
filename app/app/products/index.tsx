@@ -14,7 +14,6 @@ interface StockItem {
   quantity: string; minStock: string; belowMin: boolean; nextExpiry: string | null;
 }
 
-/** Produkte mit Bestand der gewählten Filiale (T-110). */
 export default function ProductsScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

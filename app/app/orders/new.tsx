@@ -15,7 +15,6 @@ import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
 interface StockHit { productId: string; sku: string; name: LocalizedName; unit: string; quantity: string }
 
-/** Auftrag erfassen (T-112): Kunde wählen, Produkte suchen oder scannen, Mengen, als Entwurf anlegen. */
 export default function NewOrderScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();
@@ -79,7 +78,6 @@ export default function NewOrderScreen() {
     setBusy(true);
     try {
       const api = await getApi();
-      // Gleiche Erfassung nach Netzabbruch erneut senden -> derselbe Auftrag (clientOpId)
       const order = await sendOnce(secureStore, `order:${storeId}`, check.body, newOpId, (opId) => {
         const r = orderBody({ storeId, customerId: customer?.id ?? null, lines, note }, opId);
         if (!r.ok) throw new Error(r.error);

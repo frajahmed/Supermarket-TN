@@ -6,7 +6,6 @@ import { tileRoute, tilesFor, type HomeTile } from '../src/core/home';
 import { selectStore, signOut } from '../src/device/session';
 import { LicenseBanner, useProfile } from '../src/ui/useProfile';
 
-/** Startseite nach der Anmeldung (T-109): Lizenzbanner, Filiale, Kacheln nach Rechten. */
 export default function HomeScreen() {
   const { t } = useTranslation();
   const { profile, failed, reload, storeId: initialStore } = useProfile();

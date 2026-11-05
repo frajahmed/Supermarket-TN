@@ -10,7 +10,6 @@ import { MeService } from './me.service';
 export class MeController {
   constructor(private readonly me: MeService) {}
 
-  /** Profil, Rechte, Filialen und Lizenzstatus des angemeldeten Nutzers (alle Rollen). */
   @Get()
   profile(@Ctx() ctx: RequestContext) {
     return this.me.profile(ctx);
@@ -22,7 +21,6 @@ export class MeController {
     return this.me.setupTotp(ctx);
   }
 
-  /** Aktiviert 2FA mit einem gültigen Code aus der Authenticator-App. */
   @Post('2fa/confirm') @HttpCode(200)
   confirm(@Ctx() ctx: RequestContext, @Body(new ZodPipe(TotpConfirm)) body: TotpConfirm) {
     return this.me.confirmTotp(ctx, body.code);

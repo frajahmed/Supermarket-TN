@@ -9,7 +9,6 @@ import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
-/** Kundenliste mit Suche (Name, Nummer, Matricule fiscal) – T-111. */
 export default function CustomersScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

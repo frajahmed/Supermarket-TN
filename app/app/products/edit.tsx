@@ -16,7 +16,6 @@ const EMPTY: ProductForm = {
   taxRateBp: 1900, minStock: '', trackExpiry: true,
 };
 
-/** Produkt anlegen (optional mit gescanntem Barcode) oder ändern (T-110). */
 export default function ProductEditScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ id?: string; barcode?: string; symbology?: string }>();

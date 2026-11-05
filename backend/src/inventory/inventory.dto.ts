@@ -11,7 +11,7 @@ export const MovementInput = z.object({
   storeId: z.string().uuid(),
   productId: z.string().uuid(),
   lotId: z.string().uuid().optional(),
-  /** T-113: Charge per Nummer/MHD angeben; der Server sucht oder legt sie an (nur bei Zugang). */
+  /** Der Server sucht die Charge oder legt sie an – anlegen nur bei Zugang. */
   lot: z.object({
     lotNumber: z.string().trim().min(1).max(100).optional(),
     expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u, 'MHD als JJJJ-MM-TT'),
@@ -45,13 +45,12 @@ export type PushResultItem =
   | { clientOpId: string; status: 'duplicate' }
   | { clientOpId: string; status: 'rejected'; error: string };
 
-/** GET /stores/:storeId/stock – Bestandsliste einer Filiale (T-110). */
 export const StockQuery = z.object({
   q: z.string().trim().min(1).max(100).optional(),
   cursor: z.string().trim().max(256).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   low: z.enum(['true', 'false']).optional(),
-  /** Inventur je Regal: Lagerplatz beginnt mit … (store_products.shelf_location) */
+  /** Präfix von store_products.shelf_location (Inventur je Regal) */
   location: z.string().trim().min(1).max(50).optional(),
 });
 export type StockQuery = z.infer<typeof StockQuery>;

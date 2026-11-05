@@ -14,7 +14,6 @@ import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 interface Receipt { id: string; receiptNumber: string; deviceName: string; grossTotal: string; completedAt: string;
   voidsSaleId: string | null; voided: boolean; cashier: string }
 
-/** Bons von heute (Kassierer: nur eigene), Nachdruck, Storno durch Filialleitung (T-115). */
 export default function ReceiptsScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

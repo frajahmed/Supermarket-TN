@@ -5,7 +5,7 @@ import { ZodPipe } from '../common/zod.pipe';
 import { SaleCreate, SaleQuery, SaleVoid } from './pos.dto';
 import { PosService } from './pos.service';
 
-/** Kasse / Abholverkauf (T-115). Bonnummer lückenlos je Gerät, Storno als Gegenbon. */
+// Bonnummer lückenlos je Gerät, Storno als Gegenbon – Regeln in db/010_pos.sql.
 @Controller('pos')
 export class PosController {
   constructor(private readonly pos: PosService) {}

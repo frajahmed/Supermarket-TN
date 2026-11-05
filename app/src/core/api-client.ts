@@ -1,15 +1,3 @@
-/**
- * API-Client der App mit Sitzungsverwaltung (T-109).
- *
- * - Hängt das Access-Token an jede Anfrage.
- * - Erneuert es rechtzeitig (60 s vor Ablauf) und bei 401 genau einmal; gleichzeitige
- *   Anfragen teilen sich dieselbe Erneuerung (Refresh-Tokens rotieren – ein zweiter
- *   paralleler Refresh würde vom Server als Diebstahl gewertet und die Sitzung beenden).
- * - Scheitert die Erneuerung, wird die Sitzung gelöscht und `onSignedOut` aufgerufen.
- *
- * Reines TypeScript: Speicher, fetch und Uhr werden übergeben – mit Node testbar.
- */
-
 export interface Session {
   accessToken: string;
   refreshToken: string;
@@ -41,7 +29,6 @@ export class SignedOutError extends Error {
   }
 }
 
-/** Antwort von /auth/login und /auth/refresh → gespeicherte Sitzung. */
 export function sessionFromTokenResponse(r: { accessToken: string; refreshToken: string; expiresIn: number }, now: number): Session {
   return { accessToken: r.accessToken, refreshToken: r.refreshToken, expiresAt: now + r.expiresIn };
 }
@@ -79,12 +66,10 @@ export class ApiClient {
     return this.request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
   }
 
-  /** Text-Antwort (z. B. HTML-Dokument von Rechnung/Lieferschein). */
   async text(path: string): Promise<string> {
     return this.request<string>(path, { method: 'GET' }, 'text');
   }
 
-  /** Abmelden: Server-Sitzungskette beenden (falls erreichbar), lokal immer löschen. */
   async signOut(): Promise<void> {
     const session = await this.storage.load();
     if (session) {
@@ -136,7 +121,7 @@ export class ApiClient {
     });
   }
 
-  /** Genau eine Erneuerung zur Zeit; alle Wartenden bekommen dasselbe Ergebnis. */
+  // Refresh-Tokens rotieren: ein zweiter paralleler Refresh gälte dem Server als Diebstahl und beendete die Sitzung.
   private refresh(current: Session): Promise<Session> {
     if (!this.refreshing) {
       this.refreshing = (async () => {
