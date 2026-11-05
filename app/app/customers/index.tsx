@@ -8,6 +8,7 @@ import { getApi } from '../../src/device/session';
 import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { LoadingScreen, PrimaryButton, SecondaryButton } from '../../src/ui/components';
 
 export default function CustomersScreen() {
   const { t } = useTranslation();
@@ -38,7 +39,7 @@ export default function CustomersScreen() {
   }, [t]);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  if (!profile) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
+  if (!profile) return <LoadingScreen />;
 
   return (
     <SafeAreaView style={ui.safe}>
@@ -54,9 +55,7 @@ export default function CustomersScreen() {
               <TextInput value={q} onChangeText={setQ} placeholder={t('customers.search')} style={ui.input}
                 returnKeyType="search" onSubmitEditing={() => void load()} autoCorrect={false} />
               {canWrite('customer.manage') ? (
-                <Pressable style={ui.primary} onPress={() => router.push('/customers/edit' as never)}>
-                  <Text style={ui.primaryText}>{t('customers.create')}</Text>
-                </Pressable>
+                <PrimaryButton label={t('customers.create')} onPress={() => router.push('/customers/edit' as never)} />
               ) : null}
             </View>
             {error ? <Text style={ui.error} accessibilityRole="alert">{error}</Text> : null}
@@ -81,7 +80,7 @@ export default function CustomersScreen() {
         }}
         ListEmptyComponent={busy ? null : <Text style={ui.muted}>{t('customers.empty')}</Text>}
         ListFooterComponent={busy ? <ActivityIndicator /> : cursor ? (
-          <Pressable style={ui.secondary} onPress={() => void load(cursor)}><Text style={ui.secondaryText}>{t('products.more')}</Text></Pressable>
+          <SecondaryButton label={t('products.more')} onPress={() => void load(cursor)} />
         ) : null}
       />
     </SafeAreaView>

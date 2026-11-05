@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../src/core/api-client';
 import type { ProductDetail } from '../../src/core/products';
@@ -10,6 +9,7 @@ import { getApi } from '../../src/device/session';
 import { ProductPicker, type PickedProduct } from '../../src/ui/ProductPicker';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { BackLink, LoadingScreen, Messages, PrimaryButton, ScreenScroll } from '../../src/ui/components';
 
 interface Line { product: PickedProduct; trackExpiry: boolean; packs: string; expiry: string; lotNumber: string }
 
@@ -66,42 +66,36 @@ export default function ReceiveScreen() {
     }
   }
 
-  if (!profile || !storeId) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
+  if (!profile || !storeId) return <LoadingScreen />;
 
   return (
-    <SafeAreaView style={ui.safe}>
-      <ScrollView contentContainerStyle={ui.container} keyboardShouldPersistTaps="handled">
-        <Text style={ui.title}>{t('warehouse.receive')}</Text>
-        <LicenseBanner profile={profile} />
-        <ProductPicker storeId={storeId} onPick={(p) => void add(p)} />
-        {lines.map((l, i) => (
-          <View key={`${l.product.productId}-${i}`} style={[ui.card, { gap: 8 }, errorIndex === i && { borderColor: '#b42318' }]}>
-            <View style={ui.row}>
-              <Text style={{ fontWeight: '700', flex: 1 }}>{l.product.label}</Text>
-              <Pressable onPress={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Text style={ui.error}>{t('orders.remove')}</Text></Pressable>
-            </View>
-            <View style={ui.row}>
-              <TextInput value={l.packs} onChangeText={(v) => update(i, { packs: v })} keyboardType="decimal-pad"
-                style={[ui.input, { flexGrow: 0, minWidth: 80 }]} accessibilityLabel={t('orders.quantity')} />
-              <Text>{l.product.packaging ? `${l.product.packaging.label} (× ${l.product.packaging.factor.replace(/\.?0+$/u, '')})` : t(`units.${l.product.unit}`)}</Text>
-            </View>
-            <View style={ui.row}>
-              <TextInput value={l.expiry} onChangeText={(v) => update(i, { expiry: v })} placeholder={t('warehouse.expiryPlaceholder')}
-                style={ui.input} keyboardType="numbers-and-punctuation" accessibilityLabel={t('warehouse.expiry')} />
-              <TextInput value={l.lotNumber} onChangeText={(v) => update(i, { lotNumber: v })} placeholder={t('warehouse.lotNumber')}
-                style={ui.input} autoCapitalize="characters" />
-            </View>
-            {l.trackExpiry ? <Text style={ui.muted}>{t('warehouse.expiryRequired')}</Text> : null}
+    <ScreenScroll>
+      <Text style={ui.title}>{t('warehouse.receive')}</Text>
+      <LicenseBanner profile={profile} />
+      <ProductPicker storeId={storeId} onPick={(p) => void add(p)} />
+      {lines.map((l, i) => (
+        <View key={`${l.product.productId}-${i}`} style={[ui.card, { gap: 8 }, errorIndex === i && { borderColor: '#b42318' }]}>
+          <View style={ui.row}>
+            <Text style={{ fontWeight: '700', flex: 1 }}>{l.product.label}</Text>
+            <Pressable onPress={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Text style={ui.error}>{t('orders.remove')}</Text></Pressable>
           </View>
-        ))}
-        {info ? <Text style={{ color: '#176b87', fontWeight: '700' }}>{info}</Text> : null}
-        {message ? <Text style={ui.error} accessibilityRole="alert">{message}</Text> : null}
-        <Pressable style={[ui.primary, (!canWrite('stock.receive') || busy || !lines.length) && ui.disabled]}
-          disabled={!canWrite('stock.receive') || busy || !lines.length} onPress={() => void book()}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={ui.primaryText}>{t('warehouse.bookReceipt')}</Text>}
-        </Pressable>
-        <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
-      </ScrollView>
-    </SafeAreaView>
+          <View style={ui.row}>
+            <TextInput value={l.packs} onChangeText={(v) => update(i, { packs: v })} keyboardType="decimal-pad"
+              style={[ui.input, { flexGrow: 0, minWidth: 80 }]} accessibilityLabel={t('orders.quantity')} />
+            <Text>{l.product.packaging ? `${l.product.packaging.label} (× ${l.product.packaging.factor.replace(/\.?0+$/u, '')})` : t(`units.${l.product.unit}`)}</Text>
+          </View>
+          <View style={ui.row}>
+            <TextInput value={l.expiry} onChangeText={(v) => update(i, { expiry: v })} placeholder={t('warehouse.expiryPlaceholder')}
+              style={ui.input} keyboardType="numbers-and-punctuation" accessibilityLabel={t('warehouse.expiry')} />
+            <TextInput value={l.lotNumber} onChangeText={(v) => update(i, { lotNumber: v })} placeholder={t('warehouse.lotNumber')}
+              style={ui.input} autoCapitalize="characters" />
+          </View>
+          {l.trackExpiry ? <Text style={ui.muted}>{t('warehouse.expiryRequired')}</Text> : null}
+        </View>
+      ))}
+      <Messages info={info} error={message} />
+      <PrimaryButton label={t('warehouse.bookReceipt')} onPress={() => void book()} busy={busy} disabled={!canWrite('stock.receive') || !lines.length} />
+      <BackLink />
+    </ScreenScroll>
   );
 }

@@ -11,6 +11,7 @@ import { getApi } from '../../src/device/session';
 import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { useProfile } from '../../src/ui/useProfile';
+import { BackLink, LoadingScreen, PrimaryButton, SecondaryButton } from '../../src/ui/components';
 
 type Result = { kind: 'found'; summary: ScanSummary } | { kind: 'unknown'; code: string; type: string } | { kind: 'error' };
 
@@ -44,13 +45,13 @@ export default function ScanScreen() {
     handling.current = false;
   }
 
-  if (!permission) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
+  if (!permission) return <LoadingScreen />;
   if (!permission.granted) {
     return (
       <SafeAreaView style={ui.safe}><View style={ui.center}>
         <Text style={{ textAlign: 'center' }}>{t('products.cameraNeeded')}</Text>
-        <Pressable style={ui.primary} onPress={() => void requestPermission()}><Text style={ui.primaryText}>{t('products.allowCamera')}</Text></Pressable>
-        <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
+        <PrimaryButton label={t('products.allowCamera')} onPress={() => void requestPermission()} />
+        <BackLink />
       </View></SafeAreaView>
     );
   }
@@ -89,8 +90,8 @@ export default function ScanScreen() {
           ) : null}
           {result?.kind === 'error' ? <Text style={ui.error}>{t('errors.serverUnreachable')}</Text> : null}
           <View style={ui.row}>
-            {result ? <Pressable style={ui.secondary} onPress={again}><Text style={ui.secondaryText}>{t('products.scanAgain')}</Text></Pressable> : null}
-            <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
+            {result ? <SecondaryButton label={t('products.scanAgain')} onPress={again} /> : null}
+            <BackLink />
           </View>
         </View>
       </SafeAreaView>

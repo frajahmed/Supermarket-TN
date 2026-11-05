@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../src/core/api-client';
 import { fromMilli, toMilli } from '../../src/core/orders';
@@ -11,6 +10,7 @@ import { getApi } from '../../src/device/session';
 import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { BackLink, LoadingScreen, Messages, PrimaryButton, ScreenScroll, SecondaryButton } from '../../src/ui/components';
 
 interface Item { productId: string; sku: string; name: LocalizedName; unit: string; quantity: string; shelfLocation: string | null }
 
@@ -66,44 +66,39 @@ export default function CountScreen() {
     }
   }
 
-  if (!profile || !storeId) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
+  if (!profile || !storeId) return <LoadingScreen />;
 
   return (
-    <SafeAreaView style={ui.safe}>
-      <ScrollView contentContainerStyle={ui.container} keyboardShouldPersistTaps="handled">
-        <Text style={ui.title}>{t('warehouse.count')}</Text>
-        <LicenseBanner profile={profile} />
-        <Text style={ui.muted}>{t('warehouse.countHint')}</Text>
-        <View style={ui.row}>
-          <TextInput value={location} onChangeText={setLocation} placeholder={t('warehouse.shelf')} style={ui.input} autoCapitalize="characters" />
-          <Pressable style={ui.secondary} onPress={() => void loadList()}><Text style={ui.secondaryText}>{t('warehouse.loadList')}</Text></Pressable>
-        </View>
-        {items?.map((i) => {
-          const c = (counted[i.productId] ?? '').trim().replace(',', '.');
-          let diff: string | null = null;
-          try { if (c) diff = fromMilli(toMilli(c) - toMilli(i.quantity)); } catch { diff = '?'; }
-          return (
-            <View key={i.productId} style={ui.card}>
-              <Text style={{ fontWeight: '700' }}>{productLabel(i.name, language)}</Text>
-              <Text style={ui.muted}>{i.sku}{i.shelfLocation ? ` · ${i.shelfLocation}` : ''} · {t('warehouse.system')}: {trimDecimal(i.quantity)} {t(`units.${i.unit}`)}</Text>
-              <View style={ui.row}>
-                <TextInput value={counted[i.productId] ?? ''} onChangeText={(v) => setCounted((m) => ({ ...m, [i.productId]: v }))}
-                  keyboardType="decimal-pad" placeholder={t('warehouse.counted')} style={[ui.input, { flexGrow: 0, minWidth: 100 }]} />
-                {diff && diff !== '0' ? <Text style={[ui.badge, diff.startsWith('-') ? ui.danger : ui.warn]}>{diff.startsWith('-') ? diff : `+${diff}`}</Text> : null}
-              </View>
+    <ScreenScroll>
+      <Text style={ui.title}>{t('warehouse.count')}</Text>
+      <LicenseBanner profile={profile} />
+      <Text style={ui.muted}>{t('warehouse.countHint')}</Text>
+      <View style={ui.row}>
+        <TextInput value={location} onChangeText={setLocation} placeholder={t('warehouse.shelf')} style={ui.input} autoCapitalize="characters" />
+        <SecondaryButton label={t('warehouse.loadList')} onPress={() => void loadList()} />
+      </View>
+      {items?.map((i) => {
+        const c = (counted[i.productId] ?? '').trim().replace(',', '.');
+        let diff: string | null = null;
+        try { if (c) diff = fromMilli(toMilli(c) - toMilli(i.quantity)); } catch { diff = '?'; }
+        return (
+          <View key={i.productId} style={ui.card}>
+            <Text style={{ fontWeight: '700' }}>{productLabel(i.name, language)}</Text>
+            <Text style={ui.muted}>{i.sku}{i.shelfLocation ? ` · ${i.shelfLocation}` : ''} · {t('warehouse.system')}: {trimDecimal(i.quantity)} {t(`units.${i.unit}`)}</Text>
+            <View style={ui.row}>
+              <TextInput value={counted[i.productId] ?? ''} onChangeText={(v) => setCounted((m) => ({ ...m, [i.productId]: v }))}
+                keyboardType="decimal-pad" placeholder={t('warehouse.counted')} style={[ui.input, { flexGrow: 0, minWidth: 100 }]} />
+              {diff && diff !== '0' ? <Text style={[ui.badge, diff.startsWith('-') ? ui.danger : ui.warn]}>{diff.startsWith('-') ? diff : `+${diff}`}</Text> : null}
             </View>
-          );
-        })}
-        {items?.length === 0 ? <Text style={ui.muted}>{t('products.empty')}</Text> : null}
-        {info ? <Text style={{ color: '#176b87', fontWeight: '700' }}>{info}</Text> : null}
-        {message ? <Text style={ui.error} accessibilityRole="alert">{message}</Text> : null}
-        {items?.length ? (
-          <Pressable style={[ui.primary, (!canWrite('stock.adjust') || busy) && ui.disabled]} disabled={!canWrite('stock.adjust') || busy} onPress={() => void book()}>
-            {busy ? <ActivityIndicator color="white" /> : <Text style={ui.primaryText}>{t('warehouse.bookCount')}</Text>}
-          </Pressable>
-        ) : null}
-        <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
-      </ScrollView>
-    </SafeAreaView>
+          </View>
+        );
+      })}
+      {items?.length === 0 ? <Text style={ui.muted}>{t('products.empty')}</Text> : null}
+      <Messages info={info} error={message} />
+      {items?.length ? (
+        <PrimaryButton label={t('warehouse.bookCount')} onPress={() => void book()} busy={busy} disabled={!canWrite('stock.adjust')} />
+      ) : null}
+      <BackLink />
+    </ScreenScroll>
   );
 }

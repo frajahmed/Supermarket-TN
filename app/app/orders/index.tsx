@@ -7,6 +7,7 @@ import { getApi } from '../../src/device/session';
 import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { LoadingScreen, PrimaryButton, SecondaryButton } from '../../src/ui/components';
 
 type Tab = 'orders' | 'invoices';
 const STATUSES = ['all', 'draft', 'confirmed', 'delivered', 'invoiced'] as const;
@@ -48,7 +49,7 @@ export default function OrdersScreen() {
   }, [profile, tab, status, storeId, t]);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  if (!profile) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
+  if (!profile) return <LoadingScreen />;
 
   const chip = (active: boolean, label: string, onPress: () => void) => (
     <Pressable key={label} style={[ui.chip, active && ui.chipActive]} onPress={onPress} accessibilityState={{ selected: active }}>
@@ -70,9 +71,7 @@ export default function OrdersScreen() {
               {chip(tab === 'orders', t('orders.orders'), () => setTab('orders'))}
               {chip(tab === 'invoices', t('orders.invoices'), () => setTab('invoices'))}
               {canWrite('sales.order') ? (
-                <Pressable style={ui.primary} onPress={() => router.push('/orders/new' as never)}>
-                  <Text style={ui.primaryText}>{t('orders.new')}</Text>
-                </Pressable>
+                <PrimaryButton label={t('orders.new')} onPress={() => router.push('/orders/new' as never)} />
               ) : null}
             </View>
             {tab === 'orders' ? (
@@ -101,7 +100,7 @@ export default function OrdersScreen() {
         )}
         ListEmptyComponent={busy ? null : <Text style={ui.muted}>{t('orders.empty')}</Text>}
         ListFooterComponent={busy ? <ActivityIndicator /> : cursor ? (
-          <Pressable style={ui.secondary} onPress={() => void load(cursor)}><Text style={ui.secondaryText}>{t('products.more')}</Text></Pressable>
+          <SecondaryButton label={t('products.more')} onPress={() => void load(cursor)} />
         ) : null}
       />
     </SafeAreaView>

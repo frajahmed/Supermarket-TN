@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../src/core/api-client';
 import type { Customer } from '../../src/core/customers';
@@ -10,8 +10,10 @@ import { newOpId, secureStore } from '../../src/device/runtime';
 import { getApi } from '../../src/device/session';
 import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { BarcodeScanner } from '../../src/ui/BarcodeScanner';
+import { CustomerPicker } from '../../src/ui/CustomerPicker';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { BackLink, LoadingScreen, Messages, PrimaryButton, ScreenScroll } from '../../src/ui/components';
 
 interface StockHit { productId: string; sku: string; name: LocalizedName; unit: string; quantity: string }
 
@@ -20,8 +22,6 @@ export default function NewOrderScreen() {
   const { language } = useLanguage();
   const { profile, storeId, canWrite } = useProfile();
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [customerQuery, setCustomerQuery] = useState('');
-  const [customerHits, setCustomerHits] = useState<Customer[]>([]);
   const [productQuery, setProductQuery] = useState('');
   const [productHits, setProductHits] = useState<StockHit[]>([]);
   const [lines, setLines] = useState<DraftLine[]>([]);
@@ -30,16 +30,6 @@ export default function NewOrderScreen() {
   const [message, setMessage] = useState('');
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  async function findCustomers() {
-    setMessage('');
-    try {
-      const q = encodeURIComponent(customerQuery.trim());
-      setCustomerHits((await (await getApi()).get<{ items: Customer[] }>(`/api/v1/customers?limit=20${q ? `&q=${q}` : ''}`)).items);
-    } catch {
-      setMessage(t('customers.loadFailed'));
-    }
-  }
 
   async function findProducts() {
     if (!storeId) return;
@@ -91,80 +81,57 @@ export default function NewOrderScreen() {
     }
   }
 
-  if (!profile) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
+  if (!profile) return <LoadingScreen />;
   const writable = canWrite('sales.order');
 
   return (
-    <SafeAreaView style={ui.safe}>
-      <ScrollView contentContainerStyle={ui.container} keyboardShouldPersistTaps="handled">
-        <Text style={ui.title}>{t('orders.new')}</Text>
-        <LicenseBanner profile={profile} />
+    <ScreenScroll>
+      <Text style={ui.title}>{t('orders.new')}</Text>
+      <LicenseBanner profile={profile} />
 
-        <Text style={ui.section}>1. {t('orders.customer')}</Text>
-        {customer ? (
-          <View style={[ui.card, ui.row]}>
-            <Text style={{ flex: 1, fontWeight: '700' }}>{customer.name} · {customer.number}</Text>
-            <Pressable onPress={() => setCustomer(null)}><Text style={ui.link}>{t('orders.change')}</Text></Pressable>
+      <Text style={ui.section}>1. {t('orders.customer')}</Text>
+      <CustomerPicker value={customer} onChange={setCustomer} onError={setMessage} />
+
+      <Text style={ui.section}>2. {t('orders.items')}</Text>
+      {scanning
+        ? <BarcodeScanner onCode={(code) => void onScan(code)} onClose={() => setScanning(false)} hint={t('orders.scanToAdd')} />
+        : (
+          <View style={ui.row}>
+            <TextInput value={productQuery} onChangeText={setProductQuery} placeholder={t('products.search')} style={ui.input}
+              returnKeyType="search" onSubmitEditing={() => void findProducts()} />
+            <PrimaryButton label={t('products.scan')} onPress={() => setScanning(true)} />
           </View>
-        ) : (
-          <>
-            <View style={ui.row}>
-              <TextInput value={customerQuery} onChangeText={setCustomerQuery} placeholder={t('customers.search')} style={ui.input}
-                returnKeyType="search" onSubmitEditing={() => void findCustomers()} />
-              <Pressable style={ui.secondary} onPress={() => void findCustomers()}><Text style={ui.secondaryText}>{t('orders.find')}</Text></Pressable>
-            </View>
-            {customerHits.map((c) => (
-              <Pressable key={c.id} style={ui.card} onPress={() => { setCustomer(c); setCustomerHits([]); }}>
-                <Text style={{ fontWeight: '700' }}>{c.name}</Text>
-                <Text style={ui.muted}>{c.number}{c.billingAddress.city ? ` · ${c.billingAddress.city}` : ''}</Text>
-              </Pressable>
-            ))}
-          </>
         )}
-
-        <Text style={ui.section}>2. {t('orders.items')}</Text>
-        {scanning
-          ? <BarcodeScanner onCode={(code) => void onScan(code)} onClose={() => setScanning(false)} hint={t('orders.scanToAdd')} />
-          : (
-            <View style={ui.row}>
-              <TextInput value={productQuery} onChangeText={setProductQuery} placeholder={t('products.search')} style={ui.input}
-                returnKeyType="search" onSubmitEditing={() => void findProducts()} />
-              <Pressable style={ui.primary} onPress={() => setScanning(true)}><Text style={ui.primaryText}>{t('products.scan')}</Text></Pressable>
-            </View>
-          )}
-        {productHits.map((p) => (
-          <Pressable key={p.productId} style={ui.card} onPress={() => {
-            setLines((ls) => addToDraft(ls, { productId: p.productId, label: productLabel(p.name, language), unit: p.unit, factor: '1' }));
-            setProductHits([]); setProductQuery('');
-          }}>
-            <Text style={{ fontWeight: '700' }}>{productLabel(p.name, language)}</Text>
-            <Text style={ui.muted}>{p.sku} · {t('products.stock')}: {trimDecimal(p.quantity)} {t(`units.${p.unit}`)}</Text>
-          </Pressable>
-        ))}
-
-        {lines.map((l) => (
-          <View key={l.key} style={[ui.card, errorKey === l.key && { borderColor: '#b42318' }]}>
-            <Text style={{ fontWeight: '700' }}>{l.label}</Text>
-            <View style={ui.row}>
-              <TextInput value={l.quantity} onChangeText={(v) => setQty(l.key, v)} keyboardType="decimal-pad"
-                style={[ui.input, { flexGrow: 0, minWidth: 80 }]} accessibilityLabel={t('orders.quantity')} />
-              <Text>{l.packagingLabel ?? t(`units.${l.unit}`)}</Text>
-              {l.packagingId ? <Text style={ui.muted}>= {(() => { try { return baseQuantity(l); } catch { return '?'; } })()} {t(`units.${l.unit}`)}</Text> : null}
-              <Pressable onPress={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}><Text style={ui.error}>{t('orders.remove')}</Text></Pressable>
-            </View>
-          </View>
-        ))}
-
-        <Text style={ui.section}>3. {t('orders.note')}</Text>
-        <TextInput value={note} onChangeText={setNote} style={[ui.input, { minHeight: 60 }]} multiline maxLength={1000} />
-
-        <Text style={ui.muted}>{t('orders.priceHint')}</Text>
-        {message ? <Text style={ui.error} accessibilityRole="alert">{message}</Text> : null}
-        <Pressable style={[ui.primary, (!writable || busy) && ui.disabled]} disabled={!writable || busy} onPress={() => void create()}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={ui.primaryText}>{t('orders.createDraft')}</Text>}
+      {productHits.map((p) => (
+        <Pressable key={p.productId} style={ui.card} onPress={() => {
+          setLines((ls) => addToDraft(ls, { productId: p.productId, label: productLabel(p.name, language), unit: p.unit, factor: '1' }));
+          setProductHits([]); setProductQuery('');
+        }}>
+          <Text style={{ fontWeight: '700' }}>{productLabel(p.name, language)}</Text>
+          <Text style={ui.muted}>{p.sku} · {t('products.stock')}: {trimDecimal(p.quantity)} {t(`units.${p.unit}`)}</Text>
         </Pressable>
-        <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
-      </ScrollView>
-    </SafeAreaView>
+      ))}
+
+      {lines.map((l) => (
+        <View key={l.key} style={[ui.card, errorKey === l.key && { borderColor: '#b42318' }]}>
+          <Text style={{ fontWeight: '700' }}>{l.label}</Text>
+          <View style={ui.row}>
+            <TextInput value={l.quantity} onChangeText={(v) => setQty(l.key, v)} keyboardType="decimal-pad"
+              style={[ui.input, { flexGrow: 0, minWidth: 80 }]} accessibilityLabel={t('orders.quantity')} />
+            <Text>{l.packagingLabel ?? t(`units.${l.unit}`)}</Text>
+            {l.packagingId ? <Text style={ui.muted}>= {(() => { try { return baseQuantity(l); } catch { return '?'; } })()} {t(`units.${l.unit}`)}</Text> : null}
+            <Pressable onPress={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}><Text style={ui.error}>{t('orders.remove')}</Text></Pressable>
+          </View>
+        </View>
+      ))}
+
+      <Text style={ui.section}>3. {t('orders.note')}</Text>
+      <TextInput value={note} onChangeText={setNote} style={[ui.input, { minHeight: 60 }]} multiline maxLength={1000} />
+
+      <Text style={ui.muted}>{t('orders.priceHint')}</Text>
+      <Messages error={message} />
+      <PrimaryButton label={t('orders.createDraft')} onPress={() => void create()} busy={busy} disabled={!writable} />
+      <BackLink />
+    </ScreenScroll>
   );
 }

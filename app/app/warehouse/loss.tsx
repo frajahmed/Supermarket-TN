@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../src/core/api-client';
 import { trimDecimal, type ProductDetail } from '../../src/core/products';
@@ -10,6 +9,7 @@ import { getApi } from '../../src/device/session';
 import { ProductPicker, type PickedProduct } from '../../src/ui/ProductPicker';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { BackLink, LoadingScreen, Messages, PrimaryButton, ScreenScroll } from '../../src/ui/components';
 
 export default function LossScreen() {
   const { t } = useTranslation();
@@ -58,60 +58,54 @@ export default function LossScreen() {
     }
   }
 
-  if (!profile || !storeId) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
+  if (!profile || !storeId) return <LoadingScreen />;
   const reasonMissing = !reason || (reason === 'other' && !note.trim());
 
   return (
-    <SafeAreaView style={ui.safe}>
-      <ScrollView contentContainerStyle={ui.container} keyboardShouldPersistTaps="handled">
-        <Text style={ui.title}>{t('warehouse.loss')}</Text>
-        <LicenseBanner profile={profile} />
-        {product ? (
-          <View style={[ui.card, ui.row]}>
-            <Text style={{ flex: 1, fontWeight: '700' }}>{product.label}</Text>
-            <Pressable onPress={() => setProduct(null)}><Text style={ui.link}>{t('orders.change')}</Text></Pressable>
-          </View>
-        ) : <ProductPicker storeId={storeId} onPick={(p) => void pick(p)} />}
+    <ScreenScroll>
+      <Text style={ui.title}>{t('warehouse.loss')}</Text>
+      <LicenseBanner profile={profile} />
+      {product ? (
+        <View style={[ui.card, ui.row]}>
+          <Text style={{ flex: 1, fontWeight: '700' }}>{product.label}</Text>
+          <Pressable onPress={() => setProduct(null)}><Text style={ui.link}>{t('orders.change')}</Text></Pressable>
+        </View>
+      ) : <ProductPicker storeId={storeId} onPick={(p) => void pick(p)} />}
 
-        {product ? (
-          <>
-            <View style={ui.row}>
-              <TextInput value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={[ui.input, { flexGrow: 0, minWidth: 90 }]}
-                accessibilityLabel={t('orders.quantity')} />
-              <Text>{t(`units.${product.unit}`)}</Text>
-            </View>
-            {lots.length ? (
-              <>
-                <Text>{t('warehouse.fromLot')}</Text>
-                <View style={ui.row}>
-                  {lots.map((l) => (
-                    <Pressable key={l.id} style={[ui.chip, lotId === l.id && ui.chipActive]} onPress={() => setLotId(lotId === l.id ? undefined : l.id)}>
-                      <Text style={lotId === l.id ? ui.chipActiveText : undefined}>{l.lotNumber ?? '—'} · {l.expiryDate ?? ''} · {trimDecimal(l.quantity)}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </>
-            ) : null}
-            <Text>{t('warehouse.reason')} *</Text>
-            <View style={ui.row}>
-              {LOSS_REASONS.map((r) => (
-                <Pressable key={r} style={[ui.chip, reason === r && ui.chipActive]} onPress={() => setReason(r)}>
-                  <Text style={reason === r ? ui.chipActiveText : undefined}>{t(`warehouse.reasons.${r}`)}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <TextInput value={note} onChangeText={setNote} placeholder={reason === 'other' ? `${t('warehouse.note')} *` : t('warehouse.note')}
-              style={ui.input} maxLength={400} />
-          </>
-        ) : null}
-        {info ? <Text style={{ color: '#176b87', fontWeight: '700' }}>{info}</Text> : null}
-        {message ? <Text style={ui.error} accessibilityRole="alert">{message}</Text> : null}
-        <Pressable style={[ui.primary, (!canWrite('stock.adjust') || busy || !product || reasonMissing) && ui.disabled]}
-          disabled={!canWrite('stock.adjust') || busy || !product || reasonMissing} onPress={() => void book()}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={ui.primaryText}>{t('warehouse.bookLoss')}</Text>}
-        </Pressable>
-        <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
-      </ScrollView>
-    </SafeAreaView>
+      {product ? (
+        <>
+          <View style={ui.row}>
+            <TextInput value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={[ui.input, { flexGrow: 0, minWidth: 90 }]}
+              accessibilityLabel={t('orders.quantity')} />
+            <Text>{t(`units.${product.unit}`)}</Text>
+          </View>
+          {lots.length ? (
+            <>
+              <Text>{t('warehouse.fromLot')}</Text>
+              <View style={ui.row}>
+                {lots.map((l) => (
+                  <Pressable key={l.id} style={[ui.chip, lotId === l.id && ui.chipActive]} onPress={() => setLotId(lotId === l.id ? undefined : l.id)}>
+                    <Text style={lotId === l.id ? ui.chipActiveText : undefined}>{l.lotNumber ?? '—'} · {l.expiryDate ?? ''} · {trimDecimal(l.quantity)}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : null}
+          <Text>{t('warehouse.reason')} *</Text>
+          <View style={ui.row}>
+            {LOSS_REASONS.map((r) => (
+              <Pressable key={r} style={[ui.chip, reason === r && ui.chipActive]} onPress={() => setReason(r)}>
+                <Text style={reason === r ? ui.chipActiveText : undefined}>{t(`warehouse.reasons.${r}`)}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <TextInput value={note} onChangeText={setNote} placeholder={reason === 'other' ? `${t('warehouse.note')} *` : t('warehouse.note')}
+            style={ui.input} maxLength={400} />
+        </>
+      ) : null}
+      <Messages info={info} error={message} />
+      <PrimaryButton label={t('warehouse.bookLoss')} onPress={() => void book()} busy={busy} disabled={!canWrite('stock.adjust') || !product || reasonMissing} />
+      <BackLink />
+    </ScreenScroll>
   );
 }

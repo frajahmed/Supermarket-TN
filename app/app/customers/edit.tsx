@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Switch, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../src/core/api-client';
 import {
@@ -11,6 +11,7 @@ import { changedFields } from '../../src/core/products';
 import { getApi } from '../../src/device/session';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
+import { BackLink, ChipGroup, Field, LoadingScreen, Messages, PrimaryButton, ScreenScroll } from '../../src/ui/components';
 
 const TYPES: CustomerType[] = ['business', 'individual'];
 const LOCALES: CustomerLocale[] = ['fr-TN', 'ar-TN', 'en'];
@@ -74,62 +75,48 @@ export default function CustomerEditScreen() {
     }
   }
 
-  if (loading || !profile) return <SafeAreaView style={ui.safe}><View style={ui.center}><ActivityIndicator /></View></SafeAreaView>;
+  if (loading || !profile) return <LoadingScreen />;
 
   const field = (key: keyof CustomerForm, label: string, extra: object = {}) => (
-    <View style={{ gap: 4 }}>
-      <Text>{label}</Text>
-      <TextInput value={String(form[key])} onChangeText={(v) => set(key, v as never)} style={ui.input} editable={writable} {...extra} />
-      {errors[key] ? <Text style={ui.error}>{t(`customers.errors.${errors[key]}`)}</Text> : null}
-    </View>
+    <Field label={label} value={String(form[key])} onChange={(v) => set(key, v as never)} editable={writable}
+      error={errors[key] ? t(`customers.errors.${errors[key]}`) : null} {...extra} />
   );
   const chips = <T extends string>(values: readonly T[], current: T, onPick: (v: T) => void, label: (v: T) => string) => (
-    <View style={ui.row}>
-      {values.map((v) => (
-        <Pressable key={v} style={[ui.chip, current === v && ui.chipActive]} onPress={() => writable && onPick(v)}
-          accessibilityState={{ selected: current === v }}>
-          <Text style={current === v ? ui.chipActiveText : undefined}>{label(v)}</Text>
-        </Pressable>
-      ))}
-    </View>
+    <ChipGroup values={values} selected={current} onSelect={onPick} label={label} disabled={!writable} />
   );
 
   return (
-    <SafeAreaView style={ui.safe}>
-      <ScrollView contentContainerStyle={ui.container} keyboardShouldPersistTaps="handled">
-        <Text style={ui.title}>{id ? t('customers.edit') : t('customers.create')}</Text>
-        <LicenseBanner profile={profile} />
-        {chips(TYPES, form.type, (v) => set('type', v), (v) => t(`customers.type.${v}`))}
-        {field('name', t('customers.name'))}
-        {field('taxId', form.type === 'business' ? `${t('customers.taxId')} *` : t('customers.taxId'),
-          { autoCapitalize: 'characters', autoCorrect: false, placeholder: '1234567A/M/A/000' })}
-        {field('legalName', t('customers.legalName'))}
-        {field('phone', t('customers.phone'), { keyboardType: 'phone-pad' })}
-        {field('email', t('email'), { keyboardType: 'email-address', autoCapitalize: 'none' })}
-        <Text style={ui.section}>{t('customers.address')}</Text>
-        {field('street', t('customers.street'))}
-        <View style={ui.row}>
-          <View style={{ flex: 1 }}>{field('postalCode', t('customers.postalCode'), { keyboardType: 'number-pad' })}</View>
-          <View style={{ flex: 2 }}>{field('city', t('customers.city'))}</View>
-        </View>
-        {field('governorate', t('customers.governorate'))}
+    <ScreenScroll>
+      <Text style={ui.title}>{id ? t('customers.edit') : t('customers.create')}</Text>
+      <LicenseBanner profile={profile} />
+      {chips(TYPES, form.type, (v) => set('type', v), (v) => t(`customers.type.${v}`))}
+      {field('name', t('customers.name'))}
+      {field('taxId', form.type === 'business' ? `${t('customers.taxId')} *` : t('customers.taxId'),
+        { autoCapitalize: 'characters', autoCorrect: false, placeholder: '1234567A/M/A/000' })}
+      {field('legalName', t('customers.legalName'))}
+      {field('phone', t('customers.phone'), { keyboardType: 'phone-pad' })}
+      {field('email', t('email'), { keyboardType: 'email-address', autoCapitalize: 'none' })}
+      <Text style={ui.section}>{t('customers.address')}</Text>
+      {field('street', t('customers.street'))}
+      <View style={ui.row}>
+        <View style={{ flex: 1 }}>{field('postalCode', t('customers.postalCode'), { keyboardType: 'number-pad' })}</View>
+        <View style={{ flex: 2 }}>{field('city', t('customers.city'))}</View>
+      </View>
+      {field('governorate', t('customers.governorate'))}
 
-        <Text style={ui.section}>{t('customers.terms')}</Text>
-        {field('creditLimit', `${t('customers.creditLimit')} (TND) – ${t('customers.emptyNoLimit')}`, { keyboardType: 'decimal-pad' })}
-        {field('paymentTermsDays', t('customers.paymentTerms'), { keyboardType: 'number-pad' })}
-        <View style={ui.row}>
-          <Switch value={form.vatExempt} onValueChange={(v) => set('vatExempt', v)} disabled={!writable} />
-          <Text>{t('customers.vatExempt')}</Text>
-        </View>
-        <Text>{t('customers.documentLanguage')}</Text>
-        {chips(LOCALES, form.preferredLocale, (v) => set('preferredLocale', v), (v) => t(`customers.locale.${v}`))}
+      <Text style={ui.section}>{t('customers.terms')}</Text>
+      {field('creditLimit', `${t('customers.creditLimit')} (TND) – ${t('customers.emptyNoLimit')}`, { keyboardType: 'decimal-pad' })}
+      {field('paymentTermsDays', t('customers.paymentTerms'), { keyboardType: 'number-pad' })}
+      <View style={ui.row}>
+        <Switch value={form.vatExempt} onValueChange={(v) => set('vatExempt', v)} disabled={!writable} />
+        <Text>{t('customers.vatExempt')}</Text>
+      </View>
+      <Text>{t('customers.documentLanguage')}</Text>
+      {chips(LOCALES, form.preferredLocale, (v) => set('preferredLocale', v), (v) => t(`customers.locale.${v}`))}
 
-        {message ? <Text style={ui.error} accessibilityRole="alert">{message}</Text> : null}
-        <Pressable style={[ui.primary, (!writable || busy) && ui.disabled]} disabled={!writable || busy} onPress={() => void save()}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={ui.primaryText}>{t('products.save')}</Text>}
-        </Pressable>
-        <Pressable onPress={() => router.back()}><Text style={ui.link}>{t('back')}</Text></Pressable>
-      </ScrollView>
-    </SafeAreaView>
+      <Messages error={message} />
+      <PrimaryButton label={t('products.save')} onPress={() => void save()} busy={busy} disabled={!writable} />
+      <BackLink />
+    </ScreenScroll>
   );
 }
