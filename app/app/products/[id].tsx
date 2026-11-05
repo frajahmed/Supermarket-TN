@@ -9,6 +9,7 @@ import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 import { BackLink, LoadingScreen, PrimaryButton, ScreenScroll } from '../../src/ui/components';
+import { PackagingEditor } from '../../src/ui/products/PackagingEditor';
 
 export default function ProductDetailScreen() {
   const { t } = useTranslation();
@@ -70,20 +71,7 @@ export default function ProductDetailScreen() {
         </View>
       ) : null}
 
-      <Text style={ui.section}>{t('products.packagings')}</Text>
-      <View style={ui.card}>
-        <Text>1 {unit}</Text>
-        {data.packagings.map((pk) => (
-          <Text key={pk.id}>{productLabel(pk.name, language) || pk.code} = {trimDecimal(pk.factor)} {unit}{pk.gtin ? ` · ${pk.gtin}` : ''}</Text>
-        ))}
-      </View>
-
-      <Text style={ui.section}>{t('products.barcodes')}</Text>
-      <View style={ui.card}>
-        {data.barcodes.length === 0 ? <Text style={ui.muted}>—</Text> : data.barcodes.map((b) => (
-          <Text key={b.code}>{b.code} · {b.symbology}{b.packQty !== '1.000' ? ` × ${trimDecimal(b.packQty)}` : ''}</Text>
-        ))}
-      </View>
+      <PackagingEditor detail={data} writable={canWrite('product.write')} onChanged={() => void load()} />
 
       {canWrite('product.write') ? (
         <PrimaryButton label={t('products.edit')} onPress={() => router.push({ pathname: '/products/edit', params: { id: p.id } } as never)} />

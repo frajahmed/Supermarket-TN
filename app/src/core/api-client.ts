@@ -62,6 +62,10 @@ export class ApiClient {
     return this.request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
   }
 
+  async delete<T>(path: string): Promise<T> {
+    return this.request<T>(path, { method: 'DELETE' });
+  }
+
   async patch<T>(path: string, body: unknown): Promise<T> {
     return this.request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
   }
