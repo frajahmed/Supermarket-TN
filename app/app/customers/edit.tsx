@@ -15,7 +15,7 @@ import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 const TYPES: CustomerType[] = ['business', 'individual'];
 const LOCALES: CustomerLocale[] = ['fr-TN', 'ar-TN', 'en'];
 
-/** Kunde anlegen oder ändern (T-111). Nummer vergibt der Server (CL-JJJJ-NNNNNN). */
+// Die Kundennummer (CL-JJJJ-NNNNNN) vergibt der Server.
 export default function CustomerEditScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id?: string }>();

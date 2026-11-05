@@ -4,10 +4,7 @@ import type { Profile } from '../core/home';
 import { pickStore } from '../core/home';
 import { createApiClient, loadSelectedStore, saveSelectedStore } from './runtime';
 
-/**
- * Eine Sitzung pro App-Prozess: gemeinsamer API-Client (eine Token-Erneuerung für alle
- * Bildschirme) und das zuletzt geladene Profil aus GET /me.
- */
+// Ein API-Client pro App-Prozess, damit alle Bildschirme dieselbe Token-Erneuerung teilen.
 let api: ApiClient | null = null;
 let profile: Profile | null = null;
 let storeId: string | null = null;

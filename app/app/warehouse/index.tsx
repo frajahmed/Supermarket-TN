@@ -8,7 +8,6 @@ import { getApi } from '../../src/device/session';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
-/** Lager (T-113): Wareneingang, Inventur, Verlust und Warnungen (Mindestbestand, MHD). */
 export default function WarehouseScreen() {
   const { t } = useTranslation();
   const { profile, storeId, can, canWrite } = useProfile();

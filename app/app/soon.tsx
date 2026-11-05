@@ -2,7 +2,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-/** Platzhalter für Bereiche, die noch gebaut werden (T-110 … T-116). */
 export default function SoonScreen() {
   const { t } = useTranslation();
   const { area } = useLocalSearchParams<{ area?: string }>();

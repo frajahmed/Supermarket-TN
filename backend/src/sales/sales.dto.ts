@@ -34,7 +34,6 @@ export type CreditNoteCreate = z.infer<typeof CreditNoteCreate>;
 
 const cursor = z.string().trim().max(400).optional();
 
-/** GET /sales-orders – Auftragsliste (T-112). */
 export const SalesOrderQuery = z.object({
   status: z.enum(['draft', 'confirmed', 'delivered', 'invoiced', 'cancelled']).optional(),
   customerId: z.string().uuid().optional(),
@@ -44,7 +43,7 @@ export const SalesOrderQuery = z.object({
 }).strict();
 export type SalesOrderQuery = z.infer<typeof SalesOrderQuery>;
 
-/** GET /invoices – Rechnungen und Gutschriften (T-112). Entwürfe erscheinen nicht. */
+/** Entwürfe erscheinen nicht. */
 export const InvoiceQuery = z.object({
   status: z.enum(['issued', 'sent', 'accepted', 'rejected', 'cancelled']).optional(),
   customerId: z.string().uuid().optional(),

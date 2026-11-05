@@ -36,7 +36,6 @@ export class InventoryController {
     return this.inventory.storeOverview(ctx, storeId);
   }
 
-  /** Bestandsliste einer Filiale für App und Backoffice (T-110). */
   @Get('stores/:storeId/stock')
   @RequirePermission('stock.read')
   stock(

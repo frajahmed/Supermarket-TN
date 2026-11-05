@@ -14,7 +14,6 @@ import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
-/** Kundendetail: Saldo, Limit, Zahlungsziel, letzte Aufträge und Rechnungen (T-111). */
 export default function CustomerDetailScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

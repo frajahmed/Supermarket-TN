@@ -36,7 +36,6 @@ function pg(e: unknown): { code?: string; constraint?: string } {
   return typeof e === 'object' && e !== null ? e as { code?: string; constraint?: string } : {};
 }
 
-/** Datenbankfehler in verständliche HTTP-Antworten übersetzen. */
 function mapError(e: unknown): never {
   const { code, constraint } = pg(e);
   if (code === '23505') throw new ConflictException('Kundennummer ist bereits vergeben');
@@ -89,7 +88,6 @@ export class CustomersService {
     });
   }
 
-  /** Kundendetail: Stammdaten, Saldo/Limit, letzte Aufträge und Rechnungen. */
   async detail(ctx: RequestContext, id: string) {
     return this.db.withTenant(ctx, async (db) => {
       const customer = await this.require(db, id);
@@ -161,9 +159,7 @@ export class CustomersService {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Zahlungen und Kontoauszug (T-114) – Regeln in db/009_payments.sql
-  // ---------------------------------------------------------------------------
+  // Regeln für Zahlungen und Storno: db/009_payments.sql
   async recordPayment(ctx: RequestContext, customerId: string, b: PaymentCreate) {
     return this.payments(ctx, async (db) => {
       const r = await db.query<{ id: string }>(
@@ -180,10 +176,7 @@ export class CustomersService {
     });
   }
 
-  /**
-   * Kontoauszug: Anfangssaldo (Buchungen vor `from`), Buchungen im Zeitraum mit laufendem Saldo,
-   * Schlusssaldo. Ohne `to` (bis heute) entspricht der Schlusssaldo dem offenen Saldo.
-   */
+  // Ohne `to` (bis heute) entspricht der Schlusssaldo dem offenen Saldo.
   async statement(ctx: RequestContext, customerId: string, q: StatementQuery) {
     return this.db.withTenant(ctx, async (db) => this.loadStatement(db, customerId, q));
   }
@@ -238,7 +231,6 @@ export class CustomersService {
     return r.rows[0];
   }
 
-  /** Mandantenkontext + Übersetzung der Fehlercodes aus 009. */
   private async payments<T>(ctx: RequestContext, fn: (db: PoolClient) => Promise<T>): Promise<T> {
     try {
       return await this.db.withTenant(ctx, fn);

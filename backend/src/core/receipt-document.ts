@@ -1,6 +1,3 @@
-/**
- * Kassenbon (80 mm) – zweisprachig Französisch/Arabisch, HTML für expo-print bzw. später ESC/POS (T-115).
- */
 import { escapeHtml, formatMinor, formatQuantity } from './sales-document.ts';
 
 export interface ReceiptInput {

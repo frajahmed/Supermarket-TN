@@ -11,7 +11,6 @@ import { ProductPicker, type PickedProduct } from '../../src/ui/ProductPicker';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
-/** Verlust / Bruch / abgelaufen (T-113): Begründung ist Pflicht; optional aus einer bestimmten Charge. */
 export default function LossScreen() {
   const { t } = useTranslation();
   const { profile, storeId, canWrite } = useProfile();

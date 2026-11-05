@@ -10,7 +10,6 @@ import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
-/** Kontoauszug (T-114): Anfangssaldo, Rechnungen, Gutschriften, Zahlungen, Stornos, Schlusssaldo. */
 export default function StatementScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

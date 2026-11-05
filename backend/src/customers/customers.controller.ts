@@ -7,10 +7,7 @@ import {
 } from './customers.dto';
 import { CustomersService } from './customers.service';
 
-/**
- * Geschäftskunden (T-111). Lesen: wer Aufträge erfasst (`sales.order`, auch Lagerist);
- * Schreiben: `customer.manage` (Inhaber, Filialleiter). Kassierer: kein Zugriff.
- */
+// Lesen mit sales.order (auch Lagerist), Schreiben mit customer.manage; Kassierer haben keinen Zugriff.
 @Controller()
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
@@ -40,7 +37,7 @@ export class CustomersController {
     return this.customers.update(ctx, id, body);
   }
 
-  /** Zahlung erfassen (bar, Scheck, Überweisung, Traite …); idempotent über clientOpId (T-114). */
+  /** Idempotent über clientOpId. */
   @Post('customers/:id/payments')
   @RequirePermission('payment.record')
   pay(@Ctx() ctx: RequestContext, @Param('id', ParseUUIDPipe) id: string,

@@ -3,7 +3,6 @@ import { z } from 'zod';
 const quantity = z.string().regex(/^\d{1,11}(\.\d{1,3})?$/u, 'Menge als Dezimaltext').refine((v) => /[1-9]/u.test(v), 'Menge > 0');
 const minor = z.string().regex(/^[1-9]\d{0,14}$/u, 'Betrag in Millimes, größer als 0');
 
-/** POST /pos/sales – Verkauf abschließen (T-115). */
 export const SaleCreate = z.object({
   storeId: z.string().uuid(),
   clientOpId: z.string().uuid(),

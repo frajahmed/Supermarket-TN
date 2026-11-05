@@ -1,10 +1,6 @@
 import type { LicenseMode } from './license.ts';
 
-/**
- * Startseite nach Rolle (T-109): welche Bereiche als Kacheln erscheinen.
- * Grundlage sind die Rechte aus GET /me – nicht der Rollenname. Der Server prüft trotzdem jede Anfrage.
- */
-/** Antwort von GET /me */
+// Kacheln folgen den Rechten aus GET /me, nicht dem Rollennamen.
 export interface Profile {
   user: { id: string; email: string; displayName: string; role: 'owner' | 'manager' | 'stock_clerk' | 'cashier' };
   permissions: string[];
@@ -25,7 +21,7 @@ const TILE_RULES: ReadonlyArray<[HomeTile, (p: ReadonlySet<string>) => boolean]>
   ['devices', (p) => p.has('device.manage')],
 ];
 
-/** Ziel einer Kachel; null = Bereich noch im Bau (Platzhalter). */
+/** null = Bereich noch im Bau. */
 export function tileRoute(tile: HomeTile): string | null {
   const routes: Partial<Record<HomeTile, string>> = { products: '/products', customers: '/customers', orders: '/orders', warehouse: '/warehouse', pos: '/pos' };
   return routes[tile] ?? null;
@@ -36,8 +32,6 @@ export function tilesFor(permissions: readonly string[]): HomeTile[] {
   return TILE_RULES.filter(([, allowed]) => allowed(set)).map(([tile]) => tile);
 }
 
-
-/** Schreibende Aktionen nur bei aktiver Lizenz oder in der Warnphase (wie der Server). */
 export function licenseAllowsWrite(mode: LicenseMode): boolean {
   return mode === 'active' || mode === 'warning';
 }
@@ -45,10 +39,10 @@ export function licenseAllowsWrite(mode: LicenseMode): boolean {
 export function licenseBannerColor(mode: LicenseMode): { background: string; text: string } | null {
   if (mode === 'warning') return { background: '#fdf2c8', text: '#7a5b00' };
   if (mode === 'read_only' || mode === 'unlicensed') return { background: '#fde2e1', text: '#9b1c15' };
-  return null;   // aktiv: kein Banner
+  return null;
 }
 
-/** Gespeicherte Filiale nur übernehmen, wenn der Nutzer (noch) Zugriff hat; sonst die erste. */
+/** Gespeicherte Filiale nur übernehmen, wenn der Nutzer noch Zugriff hat. */
 export function pickStore(stores: ReadonlyArray<{ id: string }>, saved: string | null): string | null {
   if (saved && stores.some((s) => s.id === saved)) return saved;
   return stores[0]?.id ?? null;

@@ -15,7 +15,6 @@ interface Row {
   estimatedGross?: string; grossTotal?: string; issueDate?: string | null; dueDate?: string | null; isCreditNote?: boolean;
 }
 
-/** Aufträge und Rechnungen (T-112). */
 export default function OrdersScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

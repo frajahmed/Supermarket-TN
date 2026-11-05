@@ -13,10 +13,7 @@ import { ui } from '../src/ui/styles';
 interface InvoiceSummary { number: string; customerName: string; issueDate: string | null; dueDate: string | null;
   netTotal: string; taxTotal: string; stampDuty: string; grossTotal: string; isCreditNote: boolean }
 
-/**
- * Lieferschein / Rechnung (T-112): Der Server erzeugt das zweisprachige HTML (fr + ar);
- * expo-print rendert es mit der Schrift des Geräts – damit wird Arabisch korrekt verbunden.
- */
+// expo-print rendert das Server-HTML mit der Schrift des Geräts – nur so wird Arabisch korrekt verbunden.
 export default function DocumentScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

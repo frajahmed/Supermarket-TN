@@ -13,7 +13,6 @@ import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
-/** Zahlung erfassen (T-114): Betrag, Zahlart, Scheck-/Traite-Nummer, optional Rechnung. */
 export default function PaymentScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

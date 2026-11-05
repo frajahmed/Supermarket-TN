@@ -13,7 +13,6 @@ import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
 interface Line { product: PickedProduct; trackExpiry: boolean; packs: string; expiry: string; lotNumber: string }
 
-/** Wareneingang (T-113): Produkt scannen, Menge (Gebinde), MHD und Charge; Stapel bucht genau einmal. */
 export default function ReceiveScreen() {
   const { t } = useTranslation();
   const { profile, storeId, canWrite } = useProfile();

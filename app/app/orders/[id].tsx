@@ -11,7 +11,6 @@ import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
-/** Auftrag: Positionen, Bestätigen (Kreditlimit), Lieferungen, Rechnungen, Dokumente (T-112). */
 export default function OrderScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

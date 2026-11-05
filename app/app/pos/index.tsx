@@ -19,7 +19,6 @@ import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 interface StockHit { productId: string; sku: string; name: LocalizedName; unit: string; salePrice: string | null }
 interface SaleResult { id: string; receiptNumber: string; grossTotal: string; change: string }
 
-/** Kasse (T-115): scannen, Menge/Rabatt, bar/Karte, Rückgeld, Bon drucken. */
 export default function PosScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

@@ -1,6 +1,3 @@
-/**
- * Zahlungen und Kontoauszug in der App (T-114) – reine Logik, mit Node getestet.
- */
 import { parseMoneyInput } from './products.ts';
 import { parseDateInput } from './warehouse.ts';
 
@@ -10,7 +7,6 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export interface PaymentForm { amount: string; method: PaymentMethod; reference: string; receivedAt: string; invoiceId: string | null }
 export type PaymentError = 'invalidAmount' | 'referenceRequired' | 'invalidDate' | 'futureDate';
 
-/** Formular → Body für POST /customers/:id/payments (ohne clientOpId; die setzt sendOnce). */
 export function paymentBody(f: PaymentForm, today: string):
   { ok: true; body: Record<string, string> } | { ok: false; errors: Partial<Record<keyof PaymentForm, PaymentError>> } {
   const errors: Partial<Record<keyof PaymentForm, PaymentError>> = {};
@@ -43,12 +39,11 @@ export interface Statement {
   from: string | null; to: string; opening: string; closing: string; entries: StatementEntry[];
 }
 
-/** Débit (Forderung steigt) / Crédit (sinkt) – Beträge ohne Vorzeichen für die Anzeige. */
+/** Débit erhöht die Forderung, Crédit senkt sie. */
 export function debitCredit(amount: string): { debit: string | null; credit: string | null } {
   return amount.startsWith('-') ? { debit: null, credit: amount.slice(1) } : { debit: amount, credit: null };
 }
 
-/** Prüft, dass Anfangssaldo + Buchungen = Schlusssaldo und der laufende Saldo stimmt. */
 export function statementConsistent(s: Statement): boolean {
   let b = BigInt(s.opening);
   for (const e of s.entries) {
@@ -58,7 +53,6 @@ export function statementConsistent(s: Statement): boolean {
   return b === BigInt(s.closing);
 }
 
-/** Erster Tag des Monats vor `today` – sinnvoller Standardzeitraum für den Auszug. */
 export function defaultStatementFrom(today: string): string {
   const [y, m] = today.split('-').map(Number) as [number, number];
   const py = m === 1 ? y - 1 : y;

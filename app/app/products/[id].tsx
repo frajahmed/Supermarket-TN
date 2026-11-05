@@ -9,7 +9,6 @@ import { useLanguage } from '../../src/i18n/LanguageProvider';
 import { ui } from '../../src/ui/styles';
 import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
-/** Produktdetail mit Bestand der Filiale, Chargen (MHD), Barcodes und Gebinden (T-110). */
 export default function ProductDetailScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

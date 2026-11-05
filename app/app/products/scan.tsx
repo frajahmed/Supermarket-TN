@@ -14,7 +14,6 @@ import { useProfile } from '../../src/ui/useProfile';
 
 type Result = { kind: 'found'; summary: ScanSummary } | { kind: 'unknown'; code: string; type: string } | { kind: 'error' };
 
-/** Kamera-Scan (T-110): Barcode → Produkt; unbekannt → anlegen mit vorausgefülltem Barcode. */
 export default function ScanScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();

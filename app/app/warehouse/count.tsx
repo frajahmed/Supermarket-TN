@@ -14,11 +14,7 @@ import { LicenseBanner, useProfile } from '../../src/ui/useProfile';
 
 interface Item { productId: string; sku: string; name: LocalizedName; unit: string; quantity: string; shelfLocation: string | null }
 
-/**
- * Inventur (T-113): Zählliste je Regal laden, gezählte Mengen eintragen, Differenzen als
- * `inventory_count` buchen. Am besten außerhalb der Öffnungszeiten zählen – die Differenz
- * bezieht sich auf den Bestand beim Laden der Liste.
- */
+// Die Differenz bezieht sich auf den Bestand beim Laden der Liste – am besten außerhalb der Öffnungszeiten zählen.
 export default function CountScreen() {
   const { t } = useTranslation();
   const { language } = useLanguage();
