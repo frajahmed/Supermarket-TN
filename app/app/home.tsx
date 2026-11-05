@@ -48,6 +48,7 @@ export default function HomeScreen() {
             <Text style={styles.title}>{t('home.title')}</Text>
             <Text>{profile.user.displayName} · {t(`role.${profile.user.role}`)}</Text>
           </View>
+          <Pressable onPress={() => router.push('/account' as never)} accessibilityRole="button"><Text style={styles.link}>{t('account.title')}</Text></Pressable>
           <Pressable onPress={() => void logout()} accessibilityRole="button"><Text style={styles.link}>{t('home.logout')}</Text></Pressable>
         </View>
 
