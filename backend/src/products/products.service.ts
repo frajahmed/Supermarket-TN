@@ -7,7 +7,7 @@ import { RequestContext } from '../auth/request-context';
 import { DbService } from '../db/db.service';
 import { requireStore } from '../inventory/inventory.service';
 import {
-  BarcodeCreate, LocalizedName, PackagingCreate, ProductCreate, ProductPatch, ProductQuery,
+  BarcodeCreate, ImportRow, LocalizedName, PackagingCreate, ProductCreate, ProductImport, ProductPatch, ProductQuery,
 } from './products.dto';
 
 type ProductRow = {
@@ -109,6 +109,20 @@ function decodeCursor(value: string | undefined): ProductCursor | undefined {
   } catch {
     throw new BadRequestException('Cursor ungültig');
   }
+}
+
+class ImportRollback extends Error {}
+class ImportRowError extends Error {}
+
+function importErrorMessage(error: unknown): string {
+  if (error instanceof ImportRowError) return error.message;
+  if (isUniqueError(error)) {
+    return pgConstraint(error) === 'product_packagings_gtin_unique' || pgMessage(error).includes('Barcode')
+      ? 'Barcode oder Karton-GTIN ist bereits vergeben' : 'Wert ist bereits vergeben';
+  }
+  if (isPgError(error, '23514')) return 'Wert außerhalb des erlaubten Bereichs';
+  if (isPgError(error, '22P02') || isPgError(error, '22003')) return 'Ungültiger Wert';
+  throw error;
 }
 
 @Injectable()
@@ -366,6 +380,96 @@ export class ProductsService {
         throw error;
       }
     });
+  }
+
+  async deletePackaging(ctx: RequestContext, productId: string, packagingId: string) {
+    return this.db.withTenant(ctx, async (db) => {
+      try {
+        const r = await db.query(`DELETE FROM app.product_packagings WHERE id = $1 AND product_id = $2 RETURNING id`, [packagingId, productId]);
+        if (!r.rowCount) throw new NotFoundException('Gebinde nicht gefunden');
+        return { productId, packagingId };
+      } catch (error: unknown) {
+        if (isPgError(error, '23503')) throw new ConflictException('Gebinde wird in Aufträgen verwendet und kann nicht gelöscht werden');
+        throw error;
+      }
+    });
+  }
+
+  async importRows(ctx: RequestContext, body: ProductImport) {
+    if (!hasPermission(ctx.role, 'price.update') && body.rows.some((r) => r.salePrice !== undefined || r.purchasePrice !== undefined)) {
+      throw new ForbiddenException('Recht fehlt: price.update – Preise in der Datei nur durch Inhaber oder Filialleiter');
+    }
+    const seen = new Map<string, number>();
+    const result = { mode: body.mode, applied: false, created: 0, updated: 0, errors: [] as Array<{ line: number; message: string }> };
+    try {
+      await this.db.withTenant(ctx, async (db) => {
+        for (const row of body.rows) {
+          const key = row.sku.toLowerCase();
+          if (seen.has(key)) { result.errors.push({ line: row.line, message: `Artikelnummer doppelt (Zeile ${seen.get(key)})` }); continue; }
+          seen.set(key, row.line);
+          await db.query('SAVEPOINT import_row');
+          try {
+            const inserted = await this.importRow(db, ctx, row);
+            await db.query('RELEASE SAVEPOINT import_row');
+            if (inserted) result.created++; else result.updated++;
+          } catch (error: unknown) {
+            await db.query('ROLLBACK TO SAVEPOINT import_row');
+            result.errors.push({ line: row.line, message: importErrorMessage(error) });
+          }
+        }
+        if (body.mode === 'apply' && result.errors.length === 0) {
+          await db.query(
+            `INSERT INTO app.audit_log (tenant_id, user_id, action, entity_type, after)
+             VALUES ($1, $2, 'product.import', 'product', $3::jsonb)`,
+            [ctx.tenantId, ctx.userId, JSON.stringify({ created: result.created, updated: result.updated,
+              withPrices: body.rows.filter((r) => r.salePrice !== undefined || r.purchasePrice !== undefined).length })]);
+          result.applied = true;
+          return;
+        }
+        throw new ImportRollback();
+      });
+    } catch (error: unknown) {
+      if (!(error instanceof ImportRollback)) throw error;
+    }
+    return result;
+  }
+
+  /** Vorhandene Artikel (gleiche Artikelnummer) werden nur in den angegebenen Feldern überschrieben. */
+  private async importRow(db: PoolClient, ctx: RequestContext, row: ImportRow): Promise<boolean> {
+    const r = await db.query<{ id: string; inserted: boolean }>(
+      `INSERT INTO app.products (tenant_id, sku, name, unit, sale_price, purchase_price, tax_rate_bp, min_stock, track_expiry, source, created_by)
+       VALUES ($1, $2, $3::jsonb, COALESCE($4, 'piece'), $5::bigint, $6::bigint, COALESCE($7, 1900), COALESCE($8, 0)::numeric,
+               COALESCE($9, true), 'import', $10)
+       ON CONFLICT (tenant_id, sku) DO UPDATE SET
+         name = app.products.name || EXCLUDED.name,
+         unit = COALESCE($4, app.products.unit),
+         sale_price = COALESCE($5::bigint, app.products.sale_price),
+         purchase_price = COALESCE($6::bigint, app.products.purchase_price),
+         tax_rate_bp = COALESCE($7, app.products.tax_rate_bp),
+         min_stock = COALESCE($8::numeric, app.products.min_stock),
+         track_expiry = COALESCE($9, app.products.track_expiry),
+         is_active = true
+       RETURNING id, (xmax = 0) AS inserted`,
+      [ctx.tenantId, row.sku, JSON.stringify(row.name), row.unit ?? null, row.salePrice ?? null, row.purchasePrice ?? null,
+       row.taxRateBp ?? null, row.minStock ?? null, row.trackExpiry ?? null, ctx.userId]);
+    const productId = r.rows[0].id;
+    if (row.barcode) {
+      const owner = await db.query<{ product_id: string }>('SELECT product_id FROM app.product_barcodes WHERE code = $1', [row.barcode]);
+      if (!owner.rows[0]) {
+        await db.query(`INSERT INTO app.product_barcodes (tenant_id, product_id, code) VALUES ($1, $2, $3)`, [ctx.tenantId, productId, row.barcode]);
+      } else if (owner.rows[0].product_id !== productId) {
+        throw new ImportRowError('Barcode gehört bereits zu einem anderen Artikel');
+      }
+    }
+    if (row.carton) {
+      const factor = row.carton.factor.replace(/\.?0+$/u, '');
+      await db.query(
+        `INSERT INTO app.product_packagings (tenant_id, product_id, code, name, factor, gtin)
+         VALUES ($1, $2, 'carton', $3::jsonb, $4::numeric, $5)
+         ON CONFLICT (tenant_id, product_id, code) DO UPDATE SET factor = EXCLUDED.factor, gtin = COALESCE(EXCLUDED.gtin, app.product_packagings.gtin)`,
+        [ctx.tenantId, productId, JSON.stringify({ fr: `Carton de ${factor}`, ar: `كرتونة ${factor}` }), row.carton.factor, row.carton.gtin ?? null]);
+    }
+    return r.rows[0].inserted;
   }
 
   private async requireProduct(db: PoolClient, productId: string): Promise<ProductRow> {

@@ -68,3 +68,31 @@ export type PackagingCreate = z.infer<typeof PackagingCreate>;
 
 export const ProductDetailQuery = z.object({ storeId: z.string().uuid().optional() }).strict();
 export type ProductDetailQuery = z.infer<typeof ProductDetailQuery>;
+
+const importMoney = z.string().regex(/^\d{1,15}$/u, 'Betrag in Millimes');
+const importQty = z.string().regex(/^\d{1,11}(\.\d{1,3})?$/u, 'Menge');
+
+/** Zeile aus der Import-Datei, in der App bereits normalisiert (Beträge in Millimes). */
+export const ImportRow = z.object({
+  line: z.number().int().min(1),
+  sku: z.string().trim().min(1).max(100),
+  name: LocalizedName,
+  unit: z.enum(['piece', 'kg', 'g', 'l', 'ml', 'pack']).optional(),
+  salePrice: importMoney.optional(),
+  purchasePrice: importMoney.optional(),
+  taxRateBp: z.number().int().min(0).max(10000).optional(),
+  minStock: importQty.optional(),
+  trackExpiry: z.boolean().optional(),
+  barcode: z.string().trim().min(1).max(100).optional(),
+  carton: z.object({
+    factor: importQty.refine((v) => /[1-9]/u.test(v), 'Faktor > 0'),
+    gtin: z.string().trim().min(1).max(100).optional(),
+  }).strict().optional(),
+}).strict();
+export type ImportRow = z.infer<typeof ImportRow>;
+
+export const ProductImport = z.object({
+  mode: z.enum(['check', 'apply']),
+  rows: z.array(ImportRow).min(1).max(5000),
+}).strict();
+export type ProductImport = z.infer<typeof ProductImport>;
