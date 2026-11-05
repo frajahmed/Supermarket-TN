@@ -121,7 +121,7 @@ Abnahmekriterien:
 - App: Benutzer anlegen/ändern/deaktivieren (Regeln aus T-102/T-108), eigene 2FA einrichten (QR aus `otpauthUri`), Geräte des Mandanten anzeigen und sperren (`app.revoke_device`, Backend-Endpunkt ergänzen).
 
 ## T-118 · Großhandelspreis ohne Preisliste (Entscheidung Ahmed)
-**Status:** offen – wartet auf Entscheidung
+**Status:** zur Prüfung – Variante (a) umgesetzt (`db/012`)
 
 Befund aus T-115: `products.sale_price` ist laut Schema ein Bruttopreis (TTC, so rechnet die Kasse). `app.price_for` (db/003) nimmt ihn für Großhandelsaufträge ohne Preisliste aber als **Netto**preis – die TVA käme doppelt hinzu (z. B. 1,350 TTC → Rechnung 1,350 HT + 19 %).
 
