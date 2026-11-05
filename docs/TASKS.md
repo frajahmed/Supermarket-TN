@@ -5,7 +5,7 @@ CI auf GitHub (`.github/workflows/ci.yml`) führt bei jedem Push `scripts/test-a
 Status: `offen` → `in Arbeit (Agent)` → `zur Prüfung` → `erledigt` (nur Claude setzt `erledigt`) oder `zurück an Agent` (mit Befund).
 Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Definition of Done: siehe `AGENTS.md`.
 
-**Nächste Aufgabe:** T-116; T-118 braucht zuerst eine Entscheidung von Ahmed. T-117 (Gerätetest) läuft parallel bei Ahmed.
+**Nächste Aufgabe:** T-104 (Offline-Sync); T-118 wartet auf Entscheidung von Ahmed; T-117 Gerätetest. T-117 (Gerätetest) läuft parallel bei Ahmed.
 
 ## Erledigt
 
@@ -27,6 +27,7 @@ Reihenfolge = Priorität. Abhängigkeiten stehen bei der Aufgabe. Regeln und Def
 | T-113 | Lager in der App: Wareneingang (Gebinde, MHD, Charge – Charge legt der Server an), Inventur je Regal mit Differenzbuchung, Verlust mit Pflicht-Begründung, Warnungen – PR #11 | `app/test/warehouse.test.ts` (4 Tests), NestJS-Integrationstest „T-113“ |
 | T-114 | Zahlungen (bar, Scheck, Überweisung, Traite …), Storno nur als Gegenbuchung, Kontoauszug mit Anfangs-/Schlusssaldo und Druckdokument fr+ar (`db/009`) – PR #12 | `db/tests/009_payments_test.sql` (Z1–Z6), `backend/test-core/statement-document.test.ts`, `app/test/payments.test.ts`, NestJS-Integrationstest „T-114“ |
 | T-115 | Kasse: lückenlose Bonnummer je Kasse (auch bei gleichzeitigen Verkäufen), Filialpreis brutto, Rabatt bis Kassierer-Limit sonst Freigabe durch Filialleitung (Passwort/PIN, Sperre nach Fehlversuchen), bar/Karte mit Rückgeld, Bon 80 mm fr+ar, Storno als Gegenbon (`db/010`) – PR #13 | `db/tests/010_pos_test.sql` (K1–K6), Kern-Tests Bon/Freigabe, `app/test/pos.test.ts`, NestJS-Integrationstest „T-115“ (10 parallele Verkäufe) |
+| T-116 | Benutzer (Rollen-/Filialregeln, 2FA zurücksetzen), eigene 2FA-Einrichtung, Geräte (Filiale, Umbenennen, Sperren); lokale Gerätesperre wirkt sofort im Guard (`db/011`) – PR #15 | `db/tests/011_device_revocation_test.sql`, `app/test/users.test.ts`, NestJS-Integrationstest „T-116“ |
 | T-107 | Einkaufspreise nur mit `report.finance`, Literalsuche, Konfliktmeldungen, Audit beim Anlegen – PR #2 | NestJS-Integrationstest „T-107“ |
 
 ---
@@ -115,7 +116,7 @@ Abnahmekriterien:
 2. Test: Rabatt über Limit nur mit Freigabe (`discount.approve`).
 
 ## T-116 · Benutzer, 2FA und Geräte in der App
-**Status:** offen · **Abhängig von:** T-109
+**Status:** erledigt (PR #15) · **Abhängig von:** T-109
 
 - App: Benutzer anlegen/ändern/deaktivieren (Regeln aus T-102/T-108), eigene 2FA einrichten (QR aus `otpauthUri`), Geräte des Mandanten anzeigen und sperren (`app.revoke_device`, Backend-Endpunkt ergänzen).
 
@@ -168,6 +169,8 @@ Abnahmekriterien:
 | 2026-11-03 | T-113 (PR #11) | erledigt (von Claude umgesetzt) | Inventur rechnet gegen den Bestand beim Laden der Liste (Hinweis: außerhalb der Öffnungszeiten zählen); Zählliste max. 100 Positionen je Laden → Regal-Filter nutzen. Einstandspreis beim Wareneingang folgt mit dem Belegleser. |
 | 2026-11-04 | T-114 (PR #12) | erledigt (von Claude umgesetzt) | Neue Migration 009 (Prüfsumme eingetragen). Zahlung erfassen zusätzlich per RLS auf Inhaber/Filialleiter begrenzt. Offene Posten je Rechnung (Zuordnung Zahlung→Rechnung, Fälligkeit/Mahnung) folgt bei Bedarf. |
 | 2026-11-04 | T-115 (PR #13) | erledigt (von Claude umgesetzt) | CI fand: Kassierer sieht Geräte ohne Filiale nicht (RLS), Bon nach Verkauf nicht gefunden – behoben. Neu entdeckt: Großhandelspreis-Fallback brutto/netto, siehe T-118. |
+| 2026-11-05 | Kommentare (PR #14) | erledigt | Kommentarregeln aus AGENTS.md auf T-109–T-115 angewendet; falsch platzierte pull-Doku korrigiert. |
+| 2026-11-05 | T-116 (PR #15) | erledigt (von Claude umgesetzt) | Befund: lokal gesperrtes Gerät blieb bis zu 15 min mit gültigem Access-Token nutzbar – Guard prüft jetzt jede Anfrage (db/011). |
 | 2026-11-03 | T-108 (PR #5) | erledigt (von Claude umgesetzt) | CI 18/18 grün. Lücke bei gemischten Filialen (RLS verbirgt fremde Zuordnungen) während der Umsetzung durch CI gefunden und behoben. |
 | 2026-11-03 | T-105 (PR #6) | erledigt (von Claude umgesetzt) | CI 19/19 grün beim ersten Lauf. Dokumente als HTML statt PDF (Arabisch), begründet in PR. |
 | 2026-11-03 | T-103 (PR #4) | erledigt (Befunde von Claude behoben) | CI 21/21 inkl. App-Typprüfung. Gerätetest offen (T-117). App-Plan T-109–T-117 angelegt. |
