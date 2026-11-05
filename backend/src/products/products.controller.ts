@@ -1,11 +1,11 @@
 import {
-  Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query,
+  Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query,
 } from '@nestjs/common';
 import { Ctx, RequirePermission } from '../auth/auth.guard';
 import { RequestContext } from '../auth/request-context';
 import { ZodPipe } from '../common/zod.pipe';
 import {
-  BarcodeCreate, PackagingCreate, ProductCreate, ProductDetailQuery, ProductPatch, ProductQuery,
+  BarcodeCreate, PackagingCreate, ProductCreate, ProductDetailQuery, ProductImport, ProductPatch, ProductQuery,
 } from './products.dto';
 import { assertStoreAccess } from '../inventory/inventory.controller';
 import { ProductsService } from './products.service';
@@ -35,6 +35,13 @@ export class ProductsController {
   ) {
     if (q.storeId) assertStoreAccess(ctx, q.storeId);
     return this.products.detail(ctx, id, q.storeId);
+  }
+
+  /** Prüfen läuft komplett durch die Datenbank und wird zurückgerollt; Importieren ist alles oder nichts. */
+  @Post('import') @HttpCode(200)
+  @RequirePermission('product.write')
+  import(@Ctx() ctx: RequestContext, @Body(new ZodPipe(ProductImport)) body: ProductImport) {
+    return this.products.importRows(ctx, body);
   }
 
   @Post()
@@ -71,6 +78,16 @@ export class ProductsController {
     @Param('code') code: string,
   ) {
     return this.products.deleteBarcode(ctx, id, code);
+  }
+
+  @Delete(':id/packagings/:packagingId')
+  @RequirePermission('product.write')
+  removePackaging(
+    @Ctx() ctx: RequestContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('packagingId', ParseUUIDPipe) packagingId: string,
+  ) {
+    return this.products.deletePackaging(ctx, id, packagingId);
   }
 
   @Post(':id/packagings')

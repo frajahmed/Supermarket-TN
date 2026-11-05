@@ -1141,3 +1141,59 @@ test('T-116: Geräte – Liste, Filiale zuordnen, Sperre wirkt sofort, eigenes G
   assert.equal((await api(`/devices/${PHONE}/revoke`, await token(OWNER_B, T_B, 'owner'), { method: 'POST', body: '{}' })).status, 404);
   assert.equal((await api('/me', owner)).status, 200, 'eigenes Gerät bleibt nutzbar');
 });
+
+test('T-119: Artikel-Import – Prüfen ändert nichts, Fehler je Zeile, alles oder nichts, Aktualisieren, Gebinde', async () => {
+  const owner = await token(OWNER_A, T_A, 'owner');
+  const clerk = await token(CLERK_A, T_A, 'stock_clerk');
+  const tag = randomUUID().slice(0, 6).toUpperCase();
+  const rows = [
+    { line: 2, sku: `IMP-${tag}-1`, name: { fr: 'Eau 1,5 L', ar: 'ماء' }, unit: 'piece', salePrice: '750', taxRateBp: 1900,
+      barcode: `619${tag}01`, carton: { factor: '6', gtin: `0619${tag}06` } },
+    { line: 3, sku: `IMP-${tag}-2`, name: { fr: 'Farine 1 kg' }, unit: 'kg', minStock: '20', trackExpiry: false },
+  ];
+  const count = async () => Number((await admin.query(`SELECT count(*) FROM app.products WHERE tenant_id = $1 AND sku LIKE $2`, [T_A, `IMP-${tag}-%`])).rows[0].count);
+
+  // Prüfen: Ergebnis wie beim Import, aber nichts gespeichert
+  const check = await api('/products/import', owner, { method: 'POST', body: JSON.stringify({ mode: 'check', rows }) });
+  assert.equal(check.status, 200, JSON.stringify(check.body));
+  assert.deepEqual([check.body.created, check.body.updated, check.body.errors, check.body.applied], [2, 0, [], false]);
+  assert.equal(await count(), 0);
+
+  // Fehler je Zeile; ein Fehler -> nichts importiert
+  const bad = [...rows, { line: 4, sku: `IMP-${tag}-3`, name: { fr: 'Doublon' }, barcode: `619${tag}01` },
+    { line: 5, sku: `IMP-${tag}-1`, name: { fr: 'Encore' } }];
+  const failed = await api('/products/import', owner, { method: 'POST', body: JSON.stringify({ mode: 'apply', rows: bad }) });
+  assert.equal(failed.body.applied, false);
+  assert.deepEqual(failed.body.errors.map((e: { line: number }) => e.line), [4, 5]);
+  assert.match(failed.body.errors[0].message, /Barcode/u);
+  assert.match(failed.body.errors[1].message, /doppelt \(Zeile 2\)/u);
+  assert.equal(await count(), 0, 'alles oder nichts');
+
+  // Importieren
+  const ok = await api('/products/import', owner, { method: 'POST', body: JSON.stringify({ mode: 'apply', rows }) });
+  assert.deepEqual([ok.body.created, ok.body.updated, ok.body.applied], [2, 0, true]);
+  assert.equal(await count(), 2);
+  const scanned = await api(`/products/by-barcode/0619${tag}06`, clerk);
+  assert.equal(scanned.body.quantityPerScan, '6.000', 'Karton-GTIN zählt 6 Stück');
+  assert.equal((await api(`/products/by-barcode/619${tag}01`, clerk)).status, 200);
+
+  // Erneut importieren aktualisiert nur angegebene Felder
+  const again = await api('/products/import', owner, { method: 'POST', body: JSON.stringify({ mode: 'apply',
+    rows: [{ line: 2, sku: `IMP-${tag}-1`, name: { en: 'Water' }, salePrice: '800' }] }) });
+  assert.deepEqual([again.body.created, again.body.updated], [0, 1]);
+  const p = (await admin.query(`SELECT name, sale_price::text AS price, tax_rate_bp FROM app.products WHERE tenant_id = $1 AND sku = $2`,
+    [T_A, `IMP-${tag}-1`])).rows[0];
+  assert.deepEqual([p.name, p.price, p.tax_rate_bp], [{ fr: 'Eau 1,5 L', ar: 'ماء', en: 'Water' }, '800', 1900]);
+  assert.equal((await admin.query(`SELECT count(*)::int AS n FROM app.audit_log WHERE action = 'product.import' AND tenant_id = $1`, [T_A])).rows[0].n, 2);
+
+  // Rechte: Lagerist darf importieren, aber ohne Preise; Kassierer gar nicht
+  assert.equal((await api('/products/import', clerk, { method: 'POST', body: JSON.stringify({ mode: 'check', rows }) })).status, 403);
+  assert.equal((await api('/products/import', clerk, { method: 'POST', body: JSON.stringify({ mode: 'check', rows: [rows[1]] }) })).status, 200);
+  assert.equal((await api('/products/import', await token(CASHIER_A, T_A, 'cashier'), { method: 'POST', body: JSON.stringify({ mode: 'check', rows: [rows[1]] }) })).status, 403);
+
+  // Gebinde löschen
+  const detail = await api(`/products/${scanned.body.product.id}`, owner);
+  const carton = detail.body.packagings[0];
+  assert.equal((await api(`/products/${scanned.body.product.id}/packagings/${carton.id}`, owner, { method: 'DELETE' })).status, 200);
+  assert.equal((await api(`/products/by-barcode/0619${tag}06`, clerk)).status, 404);
+});

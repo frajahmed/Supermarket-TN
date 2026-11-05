@@ -74,7 +74,10 @@ export default function ProductsScreen() {
                 <Text style={lowOnly ? ui.chipActiveText : undefined}>{t('products.lowOnly')}</Text>
               </Pressable>
               {canWrite('product.write') ? (
-                <SecondaryButton label={t('products.create')} onPress={() => router.push('/products/edit' as never)} />
+                <>
+                  <SecondaryButton label={t('products.create')} onPress={() => router.push('/products/edit' as never)} />
+                  <SecondaryButton label={t('import.title')} onPress={() => router.push('/products/import' as never)} />
+                </>
               ) : null}
             </View>
             {error ? <Text style={ui.error} accessibilityRole="alert">{error}</Text> : null}
