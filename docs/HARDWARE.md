@@ -45,6 +45,57 @@ Jahre bleibt das robuste Terminal die bessere Wahl.
 | Kassenschublade | Öffnet über den DK-Anschluss des Bondruckers, nicht über das Tablet. Das Öffnen ist ein ESC/POS-Befehl und hängt damit am Punkt oben. |
 | USV | Der Server muss bei leerem Akku selbst herunterfahren, sonst nimmt die Datenbank Schaden. Gehört in den Installer (`nut` oder `apcupsd`). |
 
+## Direktimport aus China (geprüft 10.11.2026)
+
+Der Anbieter sitzt in Deutschland, der Kunde in Tunesien. Geprüft wurde, ob sich die Hardware
+komplett ab Werk in China kaufen lässt. Ergebnis: nur bei einer Position lohnt es sich.
+
+| Position | Landed HT | Lokal HT | Differenz je Stück |
+| --- | ---: | ---: | ---: |
+| Robustes Android-PDA 1D/2D (FOB 125 USD) | 461 | 2 160 | **+1 698** |
+| Bondrucker 80 mm mit LAN (FOB 25 USD) | 144 | 319 | +175 |
+| Scanner 2D kabellos (FOB 20 USD) | 81 | 117 | +36 |
+| Scanner 2D mit USB-Kabel (FOB 25 USD) | 99 | 83 | −16 |
+| Kassenschublade RJ11 (FOB 20 USD) | 223 | 164 | −59 |
+
+Gerechnet mit USD 2,98, Luftfracht 25 TND/kg, Zoll 20 % als Platzhalter, RPD 3 %. Die TVA ist
+beidseitig abziehbar und deshalb ausgeklammert. Rechner: `Hardware-Budget-Pilotkunde.xlsx`,
+Blatt „Import Alibaba".
+
+Drei Gründe, warum der Rest lokal gekauft wird:
+
+1. **Der Umweg über Deutschland spart keinen tunesischen Zoll.** Das Assoziierungsabkommen
+   EU-Tunesien befreit nur Waren mit EU-Ursprung. Ware aus China behält chinesischen Ursprung,
+   auch wenn sie in Deutschland umgeladen wird; Software aufspielen ist keine ausreichende
+   Be- oder Verarbeitung. Ohne EUR.1 gilt der normale Zollsatz.
+2. **Funkgeräte brauchen Homologation (ANF/CERT)** je Typ, Marke und Modell, auf den Namen des
+   Importeurs, mit Vertretung in Tunesien und einem Mustergerät. 6 bis 8 Wochen, über ein
+   bestehendes Zertifikat 10 bis 15 Tage. Keine Ausnahme für Kleinmengen. Betrifft PDA,
+   Access Points, 4G-Router, Tablet, Smartphones und kabellose Scanner.
+3. **Tunesische Händler importieren dieselbe China-Ware in Mengen.** Bei Scannern und
+   Kassenschubladen ist ihre Marge kleiner als unsere Fracht.
+
+Konsequenz für die Serie: ein PDA-Modell aussuchen, einmal homologieren, dann für alle Kunden
+nachkaufen. Nicht je Kunde ein anderes Modell.
+
+### Anpassen ohne OEM
+
+Logo und eigener Startbildschirm vom Hersteller setzen 100 bis 500 Stück voraus. Dafür gibt es
+keinen Grund: Android Enterprise im Device-Owner-Modus wird per QR-Code aufgesetzt, installiert
+die App, sperrt Play Store und Einstellungen und startet direkt in den Kiosk-Modus. Das
+funktioniert auf jedem Android-Gerät, auch dem Samsung A06 für 379 TND. Server vorinstallieren
+und Geräte beschriften passiert in Deutschland, der Kunde packt nur aus.
+
+### Offen vor der ersten Bestellung
+
+- Echte Zollsätze je Zolltarifnummer aus dem Tarif Web 2026 der tunesischen Zollverwaltung oder
+  vom Transitär. Die 20 % in der Tabelle sind ein Platzhalter.
+- Einführerpflichten der deutschen Firma: CE-Konformität, technische Unterlagen, RoHS, und je
+  nach Fall WEEE-, Batterie- und Verpackungsregistrierung. Ob sie beim sofortigen Weiterversand
+  nach Tunesien entstehen, klärt der Steuerberater.
+- Für jedes importierte Modell ein Ersatzgerät mitkaufen. Bei Direktimport gibt es keine lokale
+  Rücknahme.
+
 ## Nicht im Budget
 
 Internetanschluss und SIM-Datenpaket, Lizenzmiete, Installation und Einweisung,
